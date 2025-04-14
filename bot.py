@@ -5,8 +5,9 @@ import datetime
 import pytz
 import base64
 import asyncio
+from flask import Flask
+import threading
 import os
-from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,6 +15,19 @@ from collections import deque  # メッセージ履歴の管理に使用
 from dotenv import load_dotenv
 
 load_dotenv()
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is alive!"
+
+# Flask を別スレッドで実行
+def run():
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+
+thread = threading.Thread(target=run)
+thread.start()
 
 # 設定
 TOKEN = os.getenv('TOKEN')
@@ -33,22 +47,6 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
-
-async def handle(request):
-    return web.Response(text="Bot is running")
-
-def run_web():
-    app = web.Application()
-    app.add_routes([web.get('/', handle)])
-    runner = web.AppRunner(app)
-
-    async def start_server():
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', 8080)
-        await site.start()
-        print("🌐 Webサーバーがポート8080で起動したよ！")
-
-    asyncio.create_task(start_server())
 
 # 会話履歴の保存
 def save_conversation_logs(conversation_logs):
@@ -103,8 +101,6 @@ async def on_ready():
         print(f"Logged in as {bot.user}")
         await bot.tree.sync()
         scheduler.start()
-        scheduler.add_job(dummy_task, "interval", minutes=5)
-        run_web()
         schedule_notifications()
         schedule_daily_todos()
         print("📅 毎日通知のスケジュールを設定したよ！")
@@ -365,9 +361,6 @@ async def on_message(message):
             response = get_gemini_response(str(message.author.id), message.content)
 
         await message.channel.send(response)
-
-async def dummy_task():
-    print("✅ bot is alive")
 
 # 通知スケジューリング
 def schedule_notifications():
