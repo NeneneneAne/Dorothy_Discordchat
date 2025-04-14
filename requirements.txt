@@ -1,0 +1,5 @@
+discord.py>=2.0.0 --no-binary discord.py
+apscheduler==3.8.1
+python-dotenv==0.21.0
+aiohttp
+requests
