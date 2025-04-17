@@ -392,7 +392,6 @@ def schedule_daily_todos():
             replace_existing=True  # ← これを追加！
         )
 
-
 async def send_user_todo(user_id: int):
     user_data = daily_notifications.get(str(user_id), {})
     todos = user_data.get("todos", [])
