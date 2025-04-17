@@ -377,13 +377,6 @@ def schedule_notifications():
             except ValueError:
                 pass
 
-async def send_daily_todo():
-    for user_id, todos in daily_notifications.items():
-        user = await bot.fetch_user(int(user_id))
-        if user and todos:
-            msg = "おはようハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
-            await user.send(msg)
-
 def schedule_daily_todos():
     for user_id, data in daily_notifications.items():
         hour = data.get("time", {}).get("hour", 8)
