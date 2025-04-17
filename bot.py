@@ -398,7 +398,7 @@ async def send_user_todo(user_id: int):
     todos = user_data.get("todos", [])
     if todos:
         user = await bot.fetch_user(user_id)
-        msg = "やっほー！ハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
+        msg = "おはよ～ハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
         await user.send(msg)
 
 bot.run(TOKEN)
