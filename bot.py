@@ -32,10 +32,20 @@ thread.start()
 # 設定
 TOKEN = os.getenv('TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
 JST = pytz.timezone("Asia/Tokyo")
+daily_notifications = load_daily_notifications()
+notifications = load_notifications()
+
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
 
 # メッセージ履歴を管理（最大5件）
 conversation_logs = {}
@@ -48,52 +58,98 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
-# 会話履歴の保存
-def save_conversation_logs(conversation_logs):
-    with open(LOG_FILE, "w", encoding="utf-8") as f:
-        json.dump(conversation_logs, f, indent=4, ensure_ascii=False)
-
-# 会話履歴の読み込み
+# 会話ログの読み書き
 def load_conversation_logs():
-    global conversation_logs
-    try:
-        with open(LOG_FILE, "r", encoding="utf-8") as f:
-            conversation_logs = json.load(f)
-    except FileNotFoundError:
-        conversation_logs = {}
+    url = f"{SUPABASE_URL}/rest/v1/conversation_logs?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        data = response.json()
+        logs = {}
+        for item in data:
+            logs.setdefault(item["user_id"], []).append({
+                "role": item["role"],
+                "parts": [{"text": item["content"]}]
+            })
+        return logs
+    return {}
 
-# 通知データの読み込み
+def save_conversation_logs(logs):
+    requests.delete(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS)
+    insert_data = []
+    for user_id, messages in logs.items():
+        for m in messages:
+            insert_data.append({
+                "user_id": user_id,
+                "role": m["role"],
+                "content": m["parts"][0]["text"]
+            })
+    if insert_data:
+        requests.post(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
+
+# ← 通知データ
 def load_notifications():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if not isinstance(data, dict):  # 読み込んだデータが辞書であることを確認
-                print("Error: notifications.json の形式が正しくない")
-                return {}
-            return data
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    url = f"{SUPABASE_URL}/rest/v1/notifications?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        result = {}
+        for row in response.json():
+            result.setdefault(row['user_id'], []).append({
+                "date": row["date"],
+                "time": row["time"],
+                "message": row["message"]
+            })
+        return result
+    return {}
 
-# 通知データの保存
-def save_notifications(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+def save_notifications(notifications):
+    requests.delete(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS)
+    insert_data = []
+    for user_id, items in notifications.items():
+        for item in items:
+            insert_data.append({
+                "user_id": user_id,
+                "date": item["date"],
+                "time": item["time"],
+                "message": item["message"]
+            })
+    if insert_data:
+        requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS, json=insert_data)
 
-notifications = load_notifications()
-
-# 毎日通知の読み込み
+# ← 毎日通知
 def load_daily_notifications():
-    try:
-        with open(DAILY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    url = f"{SUPABASE_URL}/rest/v1/daily_notifications?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        result = {}
+        for row in response.json():
+            todos = row.get("todos") or []
+            if isinstance(todos, str):
+                try:
+                    todos = json.loads(todos)
+                except:
+                    todos = []
+            result[row["user_id"]] = {
+                "todos": todos,
+                "time": {
+                    "hour": row.get("hour", 8),
+                    "minute": row.get("minute", 0)
+                }
+            }
+        return result
+    return {}
 
-def save_daily_notifications(data):
-    with open(DAILY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-daily_notifications = load_daily_notifications()
+def save_daily_notifications(daily_notifications):
+    requests.delete(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS)
+    insert_data = []
+    for user_id, val in daily_notifications.items():
+        insert_data.append({
+            "user_id": user_id,
+            "todos": json.dumps(val["todos"], ensure_ascii=False),
+            "hour": val["time"]["hour"],
+            "minute": val["time"]["minute"]
+        })
+    if insert_data:
+        requests.post(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS, json=insert_data)
 
 @bot.event
 async def on_ready():
