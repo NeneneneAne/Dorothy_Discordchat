@@ -38,8 +38,6 @@ DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
 JST = pytz.timezone("Asia/Tokyo")
-daily_notifications = load_daily_notifications()
-notifications = load_notifications()
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -115,6 +113,8 @@ def save_notifications(notifications):
     if insert_data:
         requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS, json=insert_data)
 
+notifications = load_notifications()
+
 # ← 毎日通知
 def load_daily_notifications():
     url = f"{SUPABASE_URL}/rest/v1/daily_notifications?select=*"
@@ -151,9 +151,14 @@ def save_daily_notifications(daily_notifications):
     if insert_data:
         requests.post(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS, json=insert_data)
 
+daily_notifications = load_daily_notifications()
+
 @bot.event
 async def on_ready():
     try:
+        await bot.change_presence(
+            activity=discord.Game(name="ドロシーとおしゃべり")  # ← ここで表示内容を設定
+        )
         print(f"Logged in as {bot.user}")
         await bot.tree.sync()
         scheduler.start()
