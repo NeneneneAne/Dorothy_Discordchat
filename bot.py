@@ -393,17 +393,17 @@ async def get_gemini_response(user_id, user_input):
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
-        async with session.post(url, headers=headers, params=params, json=data) as response:
-            if response.status == 200:
-                response_json = await response.json()
-                reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
+    async with session.post(url, headers=headers, params=params, json=data) as response:
+        if response.status == 200:
+            response_json = await response.json()
+            reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
 
-                conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
-                conversation_logs[user_id] = conversation_logs[user_id][-14:]
-                save_conversation_logs(conversation_logs)
-                return reply_text
-            else:
-                return f"エラー: {response.status} - {await response.text()}"
+            conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
+            conversation_logs[user_id] = conversation_logs[user_id][-14:]
+            save_conversation_logs(conversation_logs)
+            return reply_text
+        else:
+            return f"エラー: {response.status} - {await response.text()}"
 
 async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
     global session
@@ -431,13 +431,13 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
-        async with session.post(url, headers=headers, params=params, json=data) as response:
-            if response.status == 200:
-                response_json = await response.json()
-                reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
-                return reply_text
-            else:
-                return f"エラー: {response.status} - {await response.text()}"
+    async with session.post(url, headers=headers, params=params, json=data) as response:
+        if response.status == 200:
+            response_json = await response.json()
+            reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
+            return reply_text
+        else:
+            return f"エラー: {response.status} - {await response.text()}"
 
 # DMでメッセージを受信
 @bot.event
