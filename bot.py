@@ -156,17 +156,26 @@ daily_notifications = load_daily_notifications()
 @bot.event
 async def on_ready():
     try:
-        await bot.change_presence(
-            activity=discord.Game(name="ドロシーとおしゃべり")  # ← ここで表示内容を設定
-        )
+        await bot.change_presence(activity=discord.Game(name="ハニーとおしゃべり"))
         print(f"Logged in as {bot.user}")
         await bot.tree.sync()
+
         scheduler.start()
-        schedule_notifications()
-        schedule_daily_todos()
+        scheduler.remove_all_jobs()  # ← ここを追加（すべてのジョブを一回クリア）
+
+        schedule_notifications()    # 通常の通知をスケジュール
+        schedule_daily_todos()       # 毎日Todoのスケジュール
+
         print("📅 毎日通知のスケジュールを設定したよ！")
     except Exception as e:
         print(f"エラー: {e}")
+
+@bot.event
+async def on_resumed():
+    print("⚡ Botが再接続したよ！スケジュールを立て直すね！")
+    scheduler.remove_all_jobs()  # 一旦スケジュールを全部消す
+    schedule_notifications()     # 通知スケジュールし直し
+    schedule_daily_todos()        # 毎日Todoスケジュールし直し
 
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
