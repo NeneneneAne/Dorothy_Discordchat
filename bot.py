@@ -393,7 +393,6 @@ async def get_gemini_response(user_id, user_input):
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
-    async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, params=params, json=data) as response:
             if response.status == 200:
                 response_json = await response.json()
@@ -432,7 +431,6 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
-    async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, params=params, json=data) as response:
             if response.status == 200:
                 response_json = await response.json()
