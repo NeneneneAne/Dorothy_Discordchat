@@ -94,7 +94,8 @@ def load_notifications():
             result.setdefault(row['user_id'], []).append({
                 "date": row["date"],
                 "time": row["time"],
-                "message": row["message"]
+                "message": row["message"],
+                "repeat": row.get("repeat", False)  # ← 追加！
             })
         return result
     return {}
@@ -108,7 +109,8 @@ def save_notifications(notifications):
                 "user_id": user_id,
                 "date": item["date"],
                 "time": item["time"],
-                "message": item["message"]
+                "message": item["message"],
+                "repeat": item.get("repeat", False)  # ← 追加！
             })
     if insert_data:
         requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS, json=insert_data)
@@ -179,21 +181,26 @@ async def on_resumed():
 
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
-async def set_notification(interaction: discord.Interaction, date: str, time: str, message: str):
+async def set_notification(interaction: discord.Interaction, date: str, time: str, message: str, repeat: bool = False):
     try:
         datetime.datetime.strptime(date, "%m-%d")
         datetime.datetime.strptime(time, "%H:%M")
     except ValueError:
         await interaction.response.send_message("日付か時刻の形式が正しくないよ～！", ephemeral=True)
         return
-    
+
     user_id = str(interaction.user.id)
     if user_id not in notifications:
         notifications[user_id] = []
-    
-    notifications[user_id].append({"date": date, "time": time, "message": message})
+
+    notifications[user_id].append({
+        "date": date,
+        "time": time,
+        "message": message,
+        "repeat": repeat
+    })
     save_notifications(notifications)
-    await interaction.response.send_message(f'✅ {date} の {time} に "{message}"って通知するね～！', ephemeral=True)
+    await interaction.response.send_message(f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}', ephemeral=True)
     schedule_notifications()
 
 # 通知一覧表示
@@ -239,6 +246,28 @@ async def send_notification_message(user_id, info):
         user = await bot.fetch_user(int(user_id))
         if user:
             await user.send(info["message"])
+
+        # 送った後、repeatフラグによって処理を分岐
+        uid = str(user_id)
+        if uid in notifications:
+            for notif in notifications[uid]:
+                if (notif["date"] == info["date"] and
+                    notif["time"] == info["time"] and
+                    notif["message"] == info["message"]):
+
+                    if notif.get("repeat", False):
+                        # 繰り返しなら → 年を+1して再スケジュール
+                        now = datetime.datetime.now(JST)
+                        next_year_date = datetime.datetime.strptime(f"{now.year}-{notif['date']}", "%Y-%m-%d") + datetime.timedelta(days=365)
+                        notif["date"] = next_year_date.strftime("%m-%d")
+                    else:
+                        # 一回きりなら → 通知リストから削除
+                        notifications[uid].remove(notif)
+
+                    save_notifications(notifications)
+                    schedule_notifications()
+                    break
+
     except discord.NotFound:
         print(f"Error: User with ID {user_id} not found.")
 
