@@ -15,6 +15,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from collections import deque  # メッセージ履歴の管理に使用
 from dotenv import load_dotenv
 
+session = None 
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -158,7 +160,11 @@ daily_notifications = load_daily_notifications()
 
 @bot.event
 async def on_ready():
+    global session
     try:
+        if session is None:
+            session = aiohttp.ClientSession()
+            
         await bot.change_presence(activity=discord.Game(name="ハニーとおしゃべり"))
         print(f"Logged in as {bot.user}")
         await bot.tree.sync()
@@ -365,6 +371,7 @@ CHARACTER_PERSONALITY = """
 ・会話の途中でいきなり自己紹介をしないでください
 """
 async def get_gemini_response(user_id, user_input):
+    global session 
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
@@ -400,6 +407,7 @@ async def get_gemini_response(user_id, user_input):
                 return f"エラー: {response.status} - {await response.text()}"
 
 async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
+    global session
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
