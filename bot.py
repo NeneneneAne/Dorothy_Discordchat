@@ -443,20 +443,20 @@ async def on_message(message):
         image_bytes = None
         image_mime_type = "image/png"
 
-        # 添付ファイルの中から画像を探す（最初の画像のみ）
         if message.attachments:
             attachment = message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image/"):
                 image_bytes = await attachment.read()
                 image_mime_type = attachment.content_type
 
-        # 画像があれば画像付き、なければ通常の関数を呼び出し
         if image_bytes:
             response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
         else:
             response = await get_gemini_response(str(message.author.id), message.content)
 
         await message.channel.send(response)
+        
+    await bot.process_commands(message)
 
 # 通知スケジューリング
 def schedule_notifications():
