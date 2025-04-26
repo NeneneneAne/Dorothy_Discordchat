@@ -1,5 +1,6 @@
 import discord
 import requests
+import aiohttp
 import json
 import datetime
 import pytz
@@ -363,52 +364,47 @@ CHARACTER_PERSONALITY = """
 ・相手の話や画像に自然に反応するようにしてください。
 ・会話の途中でいきなり自己紹介をしないでください
 """
-def get_gemini_response(user_id, user_input):
+async def get_gemini_response(user_id, user_input):
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
-    # メッセージ履歴を追加（最大50件まで保存）
-    conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input}]} )
-    conversation_logs[user_id] = conversation_logs[user_id][-14:]  # 古い履歴を削除して50件を維持
+    conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input}]})
+    conversation_logs[user_id] = conversation_logs[user_id][-14:]
 
-    # 最後のメッセージから30分経過しているか確認
-    if len(conversation_logs[user_id]) > 1:  # 最後のメッセージがユーザーからのものであることを確認
+    if len(conversation_logs[user_id]) > 1:
         last_message_time = conversation_logs[user_id][-2].get("timestamp")
         if last_message_time:
             last_time = datetime.datetime.strptime(last_message_time, "%Y-%m-%d %H:%M:%S")
-            if (datetime.datetime.now(JST) - last_time).total_seconds() > 1800:  # 30分以上経過していれば
+            if (datetime.datetime.now(JST) - last_time).total_seconds() > 1800:
                 return "やっほー！ハニー！元気だった～？"
 
-    # 送信データを作成
-    messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]  # キャラ設定
-    messages.extend(conversation_logs[user_id])  # 履歴追加
+    messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
+    messages.extend(conversation_logs[user_id])
 
     url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
-    response = requests.post(url, headers=headers, params=params, json=data)
-    if response.status_code == 200:
-        response_json = response.json()
-        reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, params=params, json=data) as response:
+            if response.status == 200:
+                response_json = await response.json()
+                reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
 
-        # AIの応答を履歴に追加（timestampフィールドなし）
-        conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
-        conversation_logs[user_id] = conversation_logs[user_id][-14:]  # 履歴を50件に維持
-        save_conversation_logs(conversation_logs)  # ログを保存
-        return reply_text
-    else:
-        return f"エラー: {response.status_code} - {response.text}"
+                conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
+                conversation_logs[user_id] = conversation_logs[user_id][-14:]
+                save_conversation_logs(conversation_logs)
+                return reply_text
+            else:
+                return f"エラー: {response.status} - {await response.text()}"
 
-def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
+async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
-    # キャラ設定を含む最初のメッセージ
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
 
-    # 入力部（画像あり or なし）
     parts = []
     if user_input:
         parts.append({"text": user_input})
@@ -428,13 +424,14 @@ def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
-    response = requests.post(url, headers=headers, params=params, json=data)
-    if response.status_code == 200:
-        response_json = response.json()
-        reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
-        return reply_text
-    else:
-        return f"エラー: {response.status_code} - {response.text}"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, params=params, json=data) as response:
+            if response.status == 200:
+                response_json = await response.json()
+                reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
+                return reply_text
+            else:
+                return f"エラー: {response.status} - {await response.text()}"
 
 # DMでメッセージを受信
 @bot.event
@@ -455,9 +452,9 @@ async def on_message(message):
 
         # 画像があれば画像付き、なければ通常の関数を呼び出し
         if image_bytes:
-            response = get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
+            response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
         else:
-            response = get_gemini_response(str(message.author.id), message.content)
+            response = await get_gemini_response(str(message.author.id), message.content)
 
         await message.channel.send(response)
 
