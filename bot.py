@@ -158,6 +158,27 @@ def save_daily_notifications(daily_notifications):
 
 daily_notifications = load_daily_notifications()
 
+def setup_periodic_reload():
+    scheduler.add_job(
+        reload_all_data,
+        'interval', 
+        hours=1,
+        id="periodic_reload",
+        replace_existing=True
+    )
+
+async def reload_all_data():
+    global notifications, daily_notifications, conversation_logs
+    print("データを再読み込みします...")
+    notifications = load_notifications()
+    daily_notifications = load_daily_notifications()
+    conversation_logs = load_conversation_logs()
+    
+    # スケジュールも再設定
+    schedule_notifications()
+    schedule_daily_todos()
+    print("データの再読み込みが完了しました")
+
 @bot.event
 async def on_ready():
     global session
@@ -173,9 +194,9 @@ async def on_ready():
         scheduler.start()
         scheduler.remove_all_jobs()  # すべてのジョブをクリア
     
-    　　# データを再読み込み
-    　　global daily_notifications
-    　　daily_notifications = load_daily_notifications()
+        # データを再読み込み
+        global daily_notifications
+        daily_notifications = load_daily_notifications()
 
         schedule_notifications()    # 通常の通知をスケジュール
         schedule_daily_todos()       # 毎日Todoのスケジュール
@@ -503,32 +524,11 @@ def schedule_daily_todos():
             hour=hour,
             minute=minute,
             args=[int(user_id)],
-            id=f"todo_{user_id}",  # ジョブIDが被ると追加できないので
-            replace_existing=True  # ← これを追加！
+            id=job_id,  # ジョブIDが被ると追加できないので
+            replace_existing=True,  # コンマを追加
             timezone=JST  # タイムゾーンを明示的に指定
         )
         print(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
-
-def setup_periodic_reload():
-    scheduler.add_job(
-        reload_all_data,
-        'interval', 
-        hours=1,
-        id="periodic_reload",
-        replace_existing=True
-    )
-
-async def reload_all_data():
-    global notifications, daily_notifications, conversation_logs
-    print("データを再読み込みします...")
-    notifications = load_notifications()
-    daily_notifications = load_daily_notifications()
-    conversation_logs = load_conversation_logs()
-    
-    # スケジュールも再設定
-    schedule_notifications()
-    schedule_daily_todos()
-    print("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
     try:
