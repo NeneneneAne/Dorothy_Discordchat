@@ -170,11 +170,16 @@ async def on_ready():
         await bot.tree.sync()
 
         scheduler.start()
-        scheduler.remove_all_jobs()  # ← ここを追加（すべてのジョブを一回クリア）
+    　　scheduler.remove_all_jobs()  # すべてのジョブをクリア
+    
+    　　# データを再読み込み
+    　　global daily_notifications
+    　　daily_notifications = load_daily_notifications()
 
         schedule_notifications()    # 通常の通知をスケジュール
         schedule_daily_todos()       # 毎日Todoのスケジュール
 
+    　　print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
         print("📅 毎日通知のスケジュールを設定したよ！")
     except Exception as e:
         print(f"エラー: {e}")
