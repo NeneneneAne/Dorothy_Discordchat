@@ -179,7 +179,7 @@ async def on_ready():
         schedule_notifications()    # 通常の通知をスケジュール
         schedule_daily_todos()       # 毎日Todoのスケジュール
 
-    　　print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
+        print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
         print("📅 毎日通知のスケジュールを設定したよ！")
     except Exception as e:
         print(f"エラー: {e}")
