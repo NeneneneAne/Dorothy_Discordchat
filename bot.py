@@ -405,10 +405,11 @@ async def get_gemini_response(user_id, user_input):
 
     if len(conversation_logs[user_id]) > 1:
         last_message_time = conversation_logs[user_id][-2].get("timestamp")
-        if last_message_time:
-            last_time = datetime.datetime.strptime(last_message_time, "%Y-%m-%d %H:%M:%S")
-            if (datetime.datetime.now(JST) - last_time).total_seconds() > 1800:
-                return "やっほー！ハニー！元気だった～？"
+    if last_message_time:
+        last_time = datetime.datetime.strptime(last_message_time, "%Y-%m-%d %H:%M:%S")
+        last_time = JST.localize(last_time)  # ← ここを追加！
+        if (datetime.datetime.now(JST) - last_time).total_seconds() > 1800:
+            return "やっほー！ハニー！元気だった～？"
 
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     messages.extend(conversation_logs[user_id])
