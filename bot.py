@@ -406,17 +406,7 @@ async def get_gemini_response(user_id, user_input):
         "timestamp": current_time
     })
     conversation_logs[user_id] = conversation_logs[user_id][-14:]
-
-    response_text = ""
-
-    # 30分以上経過しているかチェック
-    if len(conversation_logs[user_id]) > 1:
-        last_message_time = conversation_logs[user_id][-2].get("timestamp")
-        if last_message_time:
-            last_time = JST.localize(datetime.datetime.strptime(last_message_time, "%Y-%m-%d %H:%M:%S"))
-            if (now - last_time).total_seconds() > 1800:
-                response_text = "やっほー！ハニー！元気だった～？"
-
+    
     # APIに送るmessagesを作成（timestamp除外）
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     for m in conversation_logs[user_id]:
@@ -434,9 +424,6 @@ async def get_gemini_response(user_id, user_input):
         if response.status == 200:
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
-
-            # 挨拶を追加
-            reply_text = response_text + "\n" + reply_text
 
             # モデルの返事もtimestamp付きで保存
             conversation_logs[user_id].append({
