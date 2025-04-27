@@ -104,19 +104,23 @@ def load_notifications():
     return {}
 
 def save_notifications(notifications):
-    requests.delete(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS)
-    insert_data = []
     for user_id, items in notifications.items():
+        # まずそのユーザーの通知だけ削除
+        url = f"{SUPABASE_URL}/rest/v1/notifications?user_id=eq.{user_id}"
+        requests.delete(url, headers=SUPABASE_HEADERS)
+
+        insert_data = []
         for item in items:
             insert_data.append({
                 "user_id": user_id,
                 "date": item["date"],
                 "time": item["time"],
                 "message": item["message"],
-                "repeat": item.get("repeat", False)  # ← 追加！
+                "repeat": item.get("repeat", False)
             })
-    if insert_data:
-        requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS, json=insert_data)
+
+        if insert_data:
+            requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS, json=insert_data)
 
 notifications = load_notifications()
 
@@ -228,13 +232,18 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
 @bot.tree.command(name="list_notifications", description="登録してる通知を表示するよ！")
 async def list_notifications(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    
+
     if user_id not in notifications or not notifications[user_id]:
         await interaction.response.send_message("登録されてる通知はないよ～", ephemeral=True)
         return
-    
-    msg = "\n".join([f"{i+1}️⃣ 📅 {n['date']} ⏰ {n['time']} - {n['message']}" for i, n in enumerate(notifications[user_id])])
-    await interaction.response.send_message(msg, ephemeral=True)
+
+    notif_texts = [f"{i+1}️⃣ 📅 {n['date']} ⏰ {n['time']} - {n['message']}" for i, n in enumerate(notifications[user_id])]
+    full_text = "\n".join(notif_texts)
+
+    if len(full_text) > 1900:
+        await interaction.response.send_message("通知が多すぎて全部表示できないよ～！いくつか削除してね～！", ephemeral=True)
+    else:
+        await interaction.response.send_message(full_text, ephemeral=True)
 
 # 通知削除
 @bot.tree.command(name="remove_notification", description="特定の通知を削除するよ！")
