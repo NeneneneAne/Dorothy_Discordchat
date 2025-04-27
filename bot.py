@@ -169,8 +169,9 @@ async def on_ready():
         print(f"Logged in as {bot.user}")
         await bot.tree.sync()
 
+        setup_periodic_reload()
         scheduler.start()
-    　　scheduler.remove_all_jobs()  # すべてのジョブをクリア
+        scheduler.remove_all_jobs()  # すべてのジョブをクリア
     
     　　# データを再読み込み
     　　global daily_notifications
@@ -181,6 +182,11 @@ async def on_ready():
 
         print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
         print("📅 毎日通知のスケジュールを設定したよ！")
+        print("現在のJST時刻:", datetime.datetime.now(JST))
+        print("登録されているTodo:", daily_notifications)
+        print("スケジュールされたジョブ:")
+        for job in scheduler.get_jobs():
+            print(f"- {job.id}: 次回実行 {job.next_run_time}")
     except Exception as e:
         print(f"エラー: {e}")
 
@@ -485,10 +491,12 @@ def schedule_notifications():
                 pass
 
 def schedule_daily_todos():
+    print("毎日のTodoスケジュールを設定します...")
     for user_id, data in daily_notifications.items():
         hour = data.get("time", {}).get("hour", 8)
         minute = data.get("time", {}).get("minute", 0)
 
+        job_id = f"todo_{user_id}"
         scheduler.add_job(
             send_user_todo,
             'cron',
@@ -497,14 +505,42 @@ def schedule_daily_todos():
             args=[int(user_id)],
             id=f"todo_{user_id}",  # ジョブIDが被ると追加できないので
             replace_existing=True  # ← これを追加！
+            timezone=JST  # タイムゾーンを明示的に指定
         )
+        print(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
+
+def setup_periodic_reload():
+    scheduler.add_job(
+        reload_all_data,
+        'interval', 
+        hours=1,
+        id="periodic_reload",
+        replace_existing=True
+    )
+
+async def reload_all_data():
+    global notifications, daily_notifications, conversation_logs
+    print("データを再読み込みします...")
+    notifications = load_notifications()
+    daily_notifications = load_daily_notifications()
+    conversation_logs = load_conversation_logs()
+    
+    # スケジュールも再設定
+    schedule_notifications()
+    schedule_daily_todos()
+    print("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
-    user_data = daily_notifications.get(str(user_id), {})
-    todos = user_data.get("todos", [])
-    if todos:
-        user = await bot.fetch_user(user_id)
-        msg = "おはよ～ハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
-        await user.send(msg)
+    try:
+        user_data = daily_notifications.get(str(user_id), {})
+        todos = user_data.get("todos", [])
+        print(f"ユーザー {user_id} のTodo送信: {todos}")
+        if todos:
+            user = await bot.fetch_user(user_id)
+            msg = "おはよ～ハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
+            await user.send(msg)
+            print(f"ユーザー {user_id} にTodoを送信しました")
+    except Exception as e:
+        print(f"Todo送信エラー (ユーザー {user_id}): {e}")
 
 bot.run(TOKEN)
