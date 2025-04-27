@@ -158,27 +158,6 @@ def save_daily_notifications(daily_notifications):
 
 daily_notifications = load_daily_notifications()
 
-def setup_periodic_reload():
-    scheduler.add_job(
-        reload_all_data,
-        'interval', 
-        hours=1,
-        id="periodic_reload",
-        replace_existing=True
-    )
-
-async def reload_all_data():
-    global notifications, daily_notifications, conversation_logs
-    print("データを再読み込みします...")
-    notifications = load_notifications()
-    daily_notifications = load_daily_notifications()
-    conversation_logs = load_conversation_logs()
-    
-    # スケジュールも再設定
-    schedule_notifications()
-    schedule_daily_todos()
-    print("データの再読み込みが完了しました")
-
 @bot.event
 async def on_ready():
     global session
@@ -190,16 +169,18 @@ async def on_ready():
         print(f"Logged in as {bot.user}")
         await bot.tree.sync()
 
-        setup_periodic_reload()
+        # スケジューラーを開始
         scheduler.start()
-        scheduler.remove_all_jobs()  # すべてのジョブをクリア
-    
+        
         # データを再読み込み
         global daily_notifications
         daily_notifications = load_daily_notifications()
 
+        # すべてのジョブをクリアして再設定
+        scheduler.remove_all_jobs()
+        setup_periodic_reload()
         schedule_notifications()    # 通常の通知をスケジュール
-        schedule_daily_todos()       # 毎日Todoのスケジュール
+        schedule_daily_todos()      # 毎日Todoのスケジュール
 
         print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
         print("📅 毎日通知のスケジュールを設定したよ！")
@@ -215,8 +196,9 @@ async def on_ready():
 async def on_resumed():
     print("⚡ Botが再接続したよ！スケジュールを立て直すね！")
     scheduler.remove_all_jobs()  # 一旦スケジュールを全部消す
+    setup_periodic_reload()      # 定期的な再読み込みスケジュールを追加
     schedule_notifications()     # 通知スケジュールし直し
-    schedule_daily_todos()        # 毎日Todoスケジュールし直し
+    schedule_daily_todos()       # 毎日Todoスケジュールし直し
 
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
@@ -407,7 +389,9 @@ async def get_gemini_response(user_id, user_input):
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
-    conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input}]})
+    # タイムスタンプを追加
+    current_time = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+    conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input}], "timestamp": current_time})
     conversation_logs[user_id] = conversation_logs[user_id][-14:]
 
     if len(conversation_logs[user_id]) > 1:
@@ -430,7 +414,8 @@ async def get_gemini_response(user_id, user_input):
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
 
-            conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
+            # モデルの応答もタイムスタンプ付きで保存
+            conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}], "timestamp": current_time})
             conversation_logs[user_id] = conversation_logs[user_id][-14:]
             save_conversation_logs(conversation_logs)
             return reply_text
@@ -498,16 +483,26 @@ async def on_message(message):
 
 # 通知スケジューリング
 def schedule_notifications():
-    scheduler.remove_all_jobs()
+    # 通知関連のジョブのみを削除（job_idにnotificationが含まれるもの）
+    for job in scheduler.get_jobs():
+        if "notification_" in job.id:
+            scheduler.remove_job(job.id)
+            
     now = datetime.datetime.now(JST)
     for user_id, notif_list in notifications.items():
-        for info in notif_list:
+        for i, info in enumerate(notif_list):
             date_time_str = f"{now.year}-{info['date']} {info['time']}"
             try:
                 notification_time = JST.localize(datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M"))
                 if notification_time < now:
                     notification_time = notification_time.replace(year=now.year + 1)
-                scheduler.add_job(send_notification_message, 'date', run_date=notification_time, args=[user_id, info])
+                scheduler.add_job(
+                    send_notification_message, 
+                    'date', 
+                    run_date=notification_time, 
+                    args=[user_id, info],
+                    id=f"notification_{user_id}_{i}"  # 一意のIDを設定
+                )
             except ValueError:
                 pass
 
@@ -525,10 +520,31 @@ def schedule_daily_todos():
             minute=minute,
             args=[int(user_id)],
             id=job_id,  # ジョブIDが被ると追加できないので
-            replace_existing=True,  # コンマを追加
+            replace_existing=True,  # ← これを追加！
             timezone=JST  # タイムゾーンを明示的に指定
         )
         print(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
+
+def setup_periodic_reload():
+    scheduler.add_job(
+        reload_all_data,
+        'interval', 
+        hours=1,
+        id="periodic_reload",
+        replace_existing=True
+    )
+
+async def reload_all_data():
+    global notifications, daily_notifications, conversation_logs
+    print("データを再読み込みします...")
+    notifications = load_notifications()
+    daily_notifications = load_daily_notifications()
+    conversation_logs = load_conversation_logs()
+    
+    # スケジュールも再設定
+    schedule_notifications()
+    schedule_daily_todos()
+    print("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
     try:
