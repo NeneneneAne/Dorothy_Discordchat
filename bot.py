@@ -394,22 +394,26 @@ CHARACTER_PERSONALITY = """
 ・会話の途中でいきなり自己紹介をしないでください
 """
 async def get_gemini_response(user_id, user_input):
-    global session 
+    global session
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
-    # タイムスタンプを追加
-    current_time = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
-    conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input}], "timestamp": current_time})
+    # タイムスタンプ追加
+    now = datetime.datetime.now(JST)
+    current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+    conversation_logs[user_id].append({
+        "role": "user",
+        "parts": [{"text": user_input}],
+        "timestamp": current_time
+    })
     conversation_logs[user_id] = conversation_logs[user_id][-14:]
 
     if len(conversation_logs[user_id]) > 1:
         last_message_time = conversation_logs[user_id][-2].get("timestamp")
-    if last_message_time:
-        last_time = datetime.datetime.strptime(last_message_time, "%Y-%m-%d %H:%M:%S")
-        last_time = JST.localize(last_time)  # ← ここを追加！
-        if (datetime.datetime.now(JST) - last_time).total_seconds() > 1800:
-            return "やっほー！ハニー！元気だった～？"
+        if last_message_time:
+            last_time = JST.localize(datetime.datetime.strptime(last_message_time, "%Y-%m-%d %H:%M:%S"))
+            if (now - last_time).total_seconds() > 1800:
+                return "やっほー！ハニー！元気だった～？"
 
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     messages.extend(conversation_logs[user_id])
