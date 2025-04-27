@@ -398,7 +398,6 @@ async def get_gemini_response(user_id, user_input):
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
-    # タイムスタンプ追加
     now = datetime.datetime.now(JST)
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     conversation_logs[user_id].append({
@@ -415,8 +414,13 @@ async def get_gemini_response(user_id, user_input):
             if (now - last_time).total_seconds() > 1800:
                 return "やっほー！ハニー！元気だった～？"
 
+    # APIに送るmessagesを作成（timestamp除外）
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
-    messages.extend(conversation_logs[user_id])
+    for m in conversation_logs[user_id]:
+        messages.append({
+            "role": m["role"],
+            "parts": m["parts"]
+        })
 
     url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
     headers = {"Content-Type": "application/json"}
@@ -428,8 +432,12 @@ async def get_gemini_response(user_id, user_input):
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
 
-            # モデルの応答もタイムスタンプ付きで保存
-            conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}], "timestamp": current_time})
+            # モデルの返事もtimestamp付きで保存
+            conversation_logs[user_id].append({
+                "role": "model",
+                "parts": [{"text": reply_text}],
+                "timestamp": current_time
+            })
             conversation_logs[user_id] = conversation_logs[user_id][-14:]
             save_conversation_logs(conversation_logs)
             return reply_text
