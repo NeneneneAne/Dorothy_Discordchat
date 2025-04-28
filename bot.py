@@ -75,17 +75,21 @@ def load_conversation_logs():
     return {}
 
 def save_conversation_logs(logs):
-    requests.delete(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS)
-    insert_data = []
     for user_id, messages in logs.items():
+        # そのユーザーの会話ログだけ削除
+        url = f"{SUPABASE_URL}/rest/v1/conversation_logs?user_id=eq.{user_id}"
+        requests.delete(url, headers=SUPABASE_HEADERS)
+
+        # そのユーザーの会話ログを保存
+        insert_data = []
         for m in messages:
             insert_data.append({
                 "user_id": user_id,
                 "role": m["role"],
                 "content": m["parts"][0]["text"]
             })
-    if insert_data:
-        requests.post(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
+        if insert_data:
+            requests.post(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
 
 # ← 通知データ
 def load_notifications():
@@ -148,17 +152,17 @@ def load_daily_notifications():
     return {}
 
 def save_daily_notifications(daily_notifications):
-    requests.delete(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS)
-    insert_data = []
     for user_id, val in daily_notifications.items():
-        insert_data.append({
+        # まずそのユーザーのデータだけ削除
+        url = f"{SUPABASE_URL}/rest/v1/daily_notifications?user_id=eq.{user_id}"
+        requests.delete(url, headers=SUPABASE_HEADERS)
+        insert_data = {
             "user_id": user_id,
             "todos": json.dumps(val["todos"], ensure_ascii=False),
             "hour": val["time"]["hour"],
             "minute": val["time"]["minute"]
-        })
-    if insert_data:
-        requests.post(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS, json=insert_data)
+        }
+        requests.post(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS, json=[insert_data])
 
 daily_notifications = load_daily_notifications()
 
