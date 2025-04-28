@@ -235,19 +235,21 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
 # 通知一覧表示
 @bot.tree.command(name="list_notifications", description="登録してる通知を表示するよ！")
 async def list_notifications(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)  # ← deferはここ！
+
     user_id = str(interaction.user.id)
 
     if user_id not in notifications or not notifications[user_id]:
-        await interaction.response.send_message("登録されてる通知はないよ～", ephemeral=True)
+        await interaction.followup.send("登録されてる通知はないよ～", ephemeral=True)
         return
 
     notif_texts = [f"{i+1}️⃣ 📅 {n['date']} ⏰ {n['time']} - {n['message']}" for i, n in enumerate(notifications[user_id])]
     full_text = "\n".join(notif_texts)
 
     if len(full_text) > 1900:
-        await interaction.response.send_message("通知が多すぎて全部表示できないよ～！いくつか削除してね～！", ephemeral=True)
+        await interaction.followup.send("通知が多すぎて全部表示できないよ～！いくつか削除してね～！", ephemeral=True)
     else:
-        await interaction.response.send_message(full_text, ephemeral=True)
+        await interaction.followup.send(full_text, ephemeral=True)
 
 # 通知削除
 @bot.tree.command(name="remove_notification", description="特定の通知を削除するよ！")
@@ -316,16 +318,18 @@ async def add_daily_todo(interaction: discord.Interaction, message: str):
 
 @bot.tree.command(name="list_daily_todos", description="毎日送るTodoリストを確認するよ！")
 async def list_daily_todos(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    
     user_id = str(interaction.user.id)
     user_data = daily_notifications.get(user_id)
 
     if not user_data or not user_data.get("todos"):
-        await interaction.response.send_message("Todoリストは空っぽだよ～！", ephemeral=True)
+        await interaction.followup.send("Todoリストは空っぽだよ～！", ephemeral=True)
         return
 
     todos = user_data["todos"]
     msg = "\n".join([f"{i+1}. {item}" for i, item in enumerate(todos)])
-    await interaction.response.send_message(f"📋 あなたのTodoリスト：\n{msg}", ephemeral=True)
+    await interaction.followup.send(f"📋 あなたのTodoリスト：\n{msg}", ephemeral=True)
 
 @bot.tree.command(name="remove_daily_todo", description="Todoを削除するよ！")
 async def remove_daily_todo(interaction: discord.Interaction, index: int):
