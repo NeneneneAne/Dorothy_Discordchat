@@ -89,7 +89,7 @@ def save_conversation_logs(logs):
                 "content": m["parts"][0]["text"]
             })
         if insert_data:
-            requests.post(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
+            requests.post(f"{SUPABASE_URL}/rest/v1/", headers=SUPABASE_HEADERS, json=insert_data)
 
 # ← 通知データ
 def load_notifications():
@@ -413,7 +413,7 @@ async def get_gemini_response(user_id, user_input):
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
-    conversation_logs[user_id] = conversation_logs[user_id][-14:]
+    conversation_logs[user_id] = conversation_logs[user_id][-6:]
     
     # APIに送るmessagesを作成（timestamp除外）
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
@@ -497,6 +497,7 @@ async def on_message(message):
 
         if image_bytes:
             response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
+            conversation_logs[str(message.author.id)] = []
         else:
             response = await get_gemini_response(str(message.author.id), message.content)
 
