@@ -413,7 +413,7 @@ async def get_gemini_response(user_id, user_input):
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
-    conversation_logs[user_id] = conversation_logs[user_id][-6:]
+    conversation_logs[user_id] = conversation_logs[user_id][-14:]
     
     # APIに送るmessagesを作成（timestamp除外）
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
