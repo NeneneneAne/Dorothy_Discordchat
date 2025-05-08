@@ -443,7 +443,10 @@ async def get_gemini_response(user_id, user_input):
             save_conversation_logs(conversation_logs)
             return reply_text
         else:
-            return f"エラー: {response.status} - {await response.text()}"
+            if response.status == 429:
+                return "⚠️ 今はおしゃべりの回数が上限に達しちゃったみたい！明日また話そうね～！"
+            else:
+                return "⚠️ ごめんね、うまくお返事できなかったよ～！またあとで試してみてね！"
 
 async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
     global session
