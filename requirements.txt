@@ -1,6 +1,7 @@
-discord.py>=2.0.0 --no-binary discord.py
+discord.py[voice]==2.3.2
 apscheduler==3.8.1
 python-dotenv==0.21.0
 flask
 requests
 aiohttp
+soundfile
