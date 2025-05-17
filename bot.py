@@ -380,6 +380,23 @@ async def delete_message(interaction: discord.Interaction, message_id: str):
     except ValueError:
         await interaction.response.send_message("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
 
+@bot.tree.command(name="join", description="VCに参加するよ～！")
+async def join(interaction: discord.Interaction):
+    if interaction.user.voice and interaction.user.voice.channel:
+        channel = interaction.user.voice.channel
+        await channel.connect()
+        await interaction.response.send_message("✅ ボイスチャンネルに参加したよ～！", ephemeral=True)
+    else:
+        await interaction.response.send_message("❌ VCに参加してから呼んでね～！", ephemeral=True)
+
+@bot.tree.command(name="leave", description="VCから切断するよ～！")
+async def leave(interaction: discord.Interaction):
+    if interaction.guild.voice_client:
+        await interaction.guild.voice_client.disconnect()
+        await interaction.response.send_message("👋 VCから抜けたよ～！", ephemeral=True)
+    else:
+        await interaction.response.send_message("❌ 今はどこのVCにもいないよ～！", ephemeral=True)
+
 # Gemini APIを使った会話
 CHARACTER_PERSONALITY = """
 設定:
@@ -505,7 +522,36 @@ async def on_message(message):
             response = await get_gemini_response(str(message.author.id), message.content)
 
         await message.channel.send(response)
-        
+
+vc = discord.utils.get(bot.voice_clients, guild=message.guild)
+if vc and vc.is_connected():
+    try:
+        # Coeiroinkで音声合成
+        query = requests.post(
+            "http://<ローカルPCのIP>:50021/audio_query",
+            params={"text": response, "speaker": 1}
+        )
+        if query.status_code != 200:
+            raise Exception("audio_query failed")
+
+        synthesis = requests.post(
+            "http://<ローカルPCのIP>:50021/synthesis",
+            headers={"Content-Type": "application/json"},
+            params={"speaker": 1},
+            data=query.text
+        )
+        if synthesis.status_code != 200:
+            raise Exception("synthesis failed")
+
+        with open("tts_output.wav", "wb") as f:
+            f.write(synthesis.content)
+
+        # VCに音声再生（discord.FFmpegPCMAudio使用）
+        if not vc.is_playing():
+            vc.play(discord.FFmpegPCMAudio("tts_output.wav"))
+    except Exception as e:
+        print(f"[TTS ERROR] 読み上げに失敗: {e}")
+    
     await bot.process_commands(message)
 
 # 通知スケジューリング
