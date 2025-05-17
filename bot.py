@@ -37,6 +37,7 @@ TOKEN = os.getenv('TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+TTS_BASE_URL = os.getenv("TTS_BASE_URL", "http://localhost:50021")
 DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
@@ -523,35 +524,35 @@ async def on_message(message):
 
         await message.channel.send(response)
 
-vc = discord.utils.get(bot.voice_clients, guild=message.guild)
-if vc and vc.is_connected():
-    try:
-        # Coeiroinkで音声合成
-        query = requests.post(
-            "http://<ローカルPCのIP>:50021/audio_query",
-            params={"text": response, "speaker": 1}
-        )
-        if query.status_code != 200:
-            raise Exception("audio_query failed")
+        #VC読み上げ処理
+        vc = discord.utils.get(bot.voice_clients, guild=message.guild)
+        if vc and vc.is_connected():
+            try:
+                query = requests.post(
+                    f"{TTS_BASE_URL}/audio_query",
+                    params={"text": response, "speaker": 1}
+                )
+                if query.status_code != 200:
+                    raise Exception("audio_query failed")
 
-        synthesis = requests.post(
-            "http://<ローカルPCのIP>:50021/synthesis",
-            headers={"Content-Type": "application/json"},
-            params={"speaker": 1},
-            data=query.text
-        )
-        if synthesis.status_code != 200:
-            raise Exception("synthesis failed")
+                synthesis = requests.post(
+                    f"{TTS_BASE_URL}/synthesis",
+                    headers={"Content-Type": "application/json"},
+                    params={"speaker": 1},
+                    data=query.text
+                )
+                if synthesis.status_code != 200:
+                    raise Exception("synthesis failed")
 
-        with open("tts_output.wav", "wb") as f:
-            f.write(synthesis.content)
+                with open("tts_output.wav", "wb") as f:
+                    f.write(synthesis.content)
 
-        # VCに音声再生（discord.FFmpegPCMAudio使用）
-        if not vc.is_playing():
-            vc.play(discord.FFmpegPCMAudio("tts_output.wav"))
-    except Exception as e:
-        print(f"[TTS ERROR] 読み上げに失敗: {e}")
-    
+                if not vc.is_playing():
+                    vc.play(discord.FFmpegPCMAudio("tts_output.wav", executable="ffmpeg"))
+
+            except Exception as e:
+                print(f"[TTS ERROR] 読み上げに失敗: {e}")
+
     await bot.process_commands(message)
 
 # 通知スケジューリング
