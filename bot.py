@@ -390,13 +390,16 @@ async def join(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ VCに参加してから呼んでね～！", ephemeral=True)
 
-@bot.tree.command(name="leave", description="VCから切断するよ～！")
+@bot.tree.command(name="leave", description="VCから抜けるよ～！")
 async def leave(interaction: discord.Interaction):
-    if interaction.guild.voice_client:
-        await interaction.guild.voice_client.disconnect()
-        await interaction.response.send_message("👋 VCから抜けたよ～！", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+
+    vc = interaction.guild.voice_client
+    if vc:
+        await vc.disconnect()
+        await interaction.followup.send("👋 VCから抜けたよ～！", ephemeral=True)
     else:
-        await interaction.response.send_message("❌ 今はどこのVCにもいないよ～！", ephemeral=True)
+        await interaction.followup.send("❌ ボイスチャンネルに入ってないよ～！", ephemeral=True)
 
 # Gemini APIを使った会話
 CHARACTER_PERSONALITY = """
