@@ -1,5 +1,5 @@
 import discord
-import s
+import soundfile
 import aiohttp
 import json
 import datetime
