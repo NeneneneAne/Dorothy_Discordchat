@@ -1,5 +1,5 @@
 import discord
-import requests
+import s
 import aiohttp
 import json
 import datetime
@@ -63,7 +63,7 @@ scheduler = AsyncIOScheduler(timezone=JST)
 # 会話ログの読み書き
 def load_conversation_logs():
     url = f"{SUPABASE_URL}/rest/v1/conversation_logs?select=*"
-    response = requests.get(url, headers=SUPABASE_HEADERS)
+    response = s.get(url, headers=SUPABASE_HEADERS)
     if response.status_code == 200:
         data = response.json()
         logs = {}
@@ -383,12 +383,15 @@ async def delete_message(interaction: discord.Interaction, message_id: str):
 
 @bot.tree.command(name="join", description="VCに参加するよ～！")
 async def join(interaction: discord.Interaction):
-    if interaction.user.voice and interaction.user.voice.channel:
-        channel = interaction.user.voice.channel
-        await channel.connect()
-        await interaction.response.send_message("✅ ボイスチャンネルに参加したよ～！", ephemeral=True)
-    else:
-        await interaction.response.send_message("❌ VCに参加してから呼んでね～！", ephemeral=True)
+    member = interaction.guild.get_member(interaction.user.id)
+
+    if member is None or member.voice is None or member.voice.channel is None:
+        await interaction.response.send_message("❌ VCに入ってから呼んでね～！", ephemeral=True)
+        return
+
+    channel = member.voice.channel
+    await channel.connect()
+    await interaction.response.send_message(f"✅ ボイスチャンネル「{channel.name}」に入ったよ～！", ephemeral=True)
 
 @bot.tree.command(name="leave", description="VCから抜けるよ～！")
 async def leave(interaction: discord.Interaction):
@@ -546,28 +549,31 @@ async def on_message(message):
                 vc = discord.utils.get(bot.voice_clients, guild=guild)
                 if vc and vc.is_connected():
                     try:
-                        query = requests.post(
-                            f"{TTS_BASE_URL}/audio_query",
-                            params={"text": response, "speaker": 1}
-                        )
-                        if query.status_code != 200:
-                            raise Exception("audio_query failed")
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(
+                                f"{TTS_BASE_URL}/audio_query",
+                                params={"text": response, "speaker": 1},
+                                timeout=aiohttp.ClientTimeout(total=10)
+                            ) as query:
+                                if query.status != 200:
+                                    raise Exception("audio_query failed")
+                                audio_query = await query.text()
 
-                        synthesis = requests.post(
-                            f"{TTS_BASE_URL}/synthesis",
-                            headers={"Content-Type": "application/json"},
-                            params={"speaker": 1},
-                            data=query.text
-                        )
-                        if synthesis.status_code != 200:
-                            raise Exception("synthesis failed")
-
-                        with open("tts_output.wav", "wb") as f:
-                            f.write(synthesis.content)
+                            async with session.post(
+                                f"{TTS_BASE_URL}/synthesis",
+                                params={"speaker": 1},
+                                headers={"Content-Type": "application/json"},
+                                data=audio_query,
+                                timeout=aiohttp.ClientTimeout(total=15)
+                            ) as synthesis:
+                                if synthesis.status != 200:
+                                    raise Exception("synthesis failed")
+                                with open("tts_output.wav", "wb") as f:
+                                    f.write(await synthesis.read())
 
                         if not vc.is_playing():
                             vc.play(discord.FFmpegPCMAudio("tts_output.wav", executable="ffmpeg"))
-
                     except Exception as e:
                         print(f"[TTS ERROR] 読み上げに失敗: {e}")
                 break  # 最初に見つかったVCだけに再生
