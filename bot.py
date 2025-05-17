@@ -500,31 +500,24 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
         else:
             return f"エラー: {response.status} - {await response.text()}"
 
-# DMでメッセージを受信
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
 
-    if message.guild is None:
-        image_bytes = None
-        image_mime_type = "image/png"
+    # 応答生成
+    response = None
 
-        if message.attachments:
-            attachment = message.attachments[0]
-            if attachment.content_type and attachment.content_type.startswith("image/"):
-                image_bytes = await attachment.read()
-                image_mime_type = attachment.content_type
-
-        if image_bytes:
-            response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
-            conversation_logs[str(message.author.id)] = []
-        else:
-            response = await get_gemini_response(str(message.author.id), message.content)
-
+    if message.guild is None:  # DM
+        ...
+        response = await get_gemini_response(...) or get_gemini_response_with_image(...)
+        await message.channel.send(response)
+    else:  # サーバー内テキストチャンネル
+        response = await get_gemini_response(str(message.author.id), message.content)
         await message.channel.send(response)
 
-        #VC読み上げ処理
+    #VCにBotがいるなら読み上げを試みる
+    if response and message.guild:
         vc = discord.utils.get(bot.voice_clients, guild=message.guild)
         if vc and vc.is_connected():
             try:
@@ -532,18 +525,12 @@ async def on_message(message):
                     f"{TTS_BASE_URL}/audio_query",
                     params={"text": response, "speaker": 1}
                 )
-                if query.status_code != 200:
-                    raise Exception("audio_query failed")
-
                 synthesis = requests.post(
                     f"{TTS_BASE_URL}/synthesis",
                     headers={"Content-Type": "application/json"},
                     params={"speaker": 1},
                     data=query.text
                 )
-                if synthesis.status_code != 200:
-                    raise Exception("synthesis failed")
-
                 with open("tts_output.wav", "wb") as f:
                     f.write(synthesis.content)
 
