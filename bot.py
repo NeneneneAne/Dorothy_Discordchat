@@ -59,6 +59,8 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
+print(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
+
 # 会話ログの読み書き
 def load_conversation_logs():
     url = f"{SUPABASE_URL}/rest/v1/conversation_logs?select=*"
@@ -429,6 +431,7 @@ async def get_gemini_response(user_id, user_input):
     data = {"contents": messages}
 
     async with session.post(url, headers=headers, params=params, json=data) as response:
+        print(f"Gemini API status: {response.status}")
         if response.status == 200:
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
