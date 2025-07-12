@@ -233,6 +233,44 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
     save_notifications(notifications)
     await interaction.response.send_message(f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}', ephemeral=True)
     schedule_notifications()
+    
+# タイマー設定コマンド
+@bot.tree.command(name="set_notification_after", description="○時間○分後に通知を設定するよ！")
+async def set_notification_after(interaction: discord.Interaction, hours: int, minutes: int, message: str):
+    if hours < 0 or minutes < 0 or (hours == 0 and minutes == 0):
+        await interaction.response.send_message("⛔ 1分以上後の時間を指定してね～！", ephemeral=True)
+        return
+
+    user_id = str(interaction.user.id)
+    now = datetime.datetime.now(JST)
+    future_time = now + datetime.timedelta(hours=hours, minutes=minutes)
+
+    info = {
+        "date": future_time.strftime("%m-%d"),
+        "time": future_time.strftime("%H:%M"),
+        "message": message,
+        "repeat": False
+    }
+
+    # 通知データに保存
+    if user_id not in notifications:
+        notifications[user_id] = []
+    notifications[user_id].append(info)
+    save_notifications(notifications)
+
+    # 通知ジョブを追加（即時スケジューリング）
+    scheduler.add_job(
+        send_notification_message,
+        'date',
+        run_date=future_time,
+        args=[user_id, info],
+        id=f"after_notification_{user_id}_{int(future_time.timestamp())}"  # 一意なID
+    )
+
+    await interaction.response.send_message(
+        f"⏰ {hours}時間{minutes}分後（{future_time.strftime('%H:%M')}）に「{message}」を通知するよ～！",
+        ephemeral=True
+    )
 
 # 通知一覧表示
 @bot.tree.command(name="list_notifications", description="登録してる通知を表示するよ！")
