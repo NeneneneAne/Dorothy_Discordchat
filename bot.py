@@ -192,16 +192,25 @@ def save_daily_notifications(daily_notifications):
 
 daily_notifications = load_daily_notifications()
 
-def schedule_sleep_checks():
+def schedule_sleep_check():
+    """睡眠チェックのスケジュールを設定"""
     print("🌙 sleep_check_times をスケジューリングします...")
+    
+    # 既存の睡眠チェック関連ジョブを削除
     for job in scheduler.get_jobs():
         if "sleep_check_" in job.id:
             scheduler.remove_job(job.id)
-
+    
+    # sleep_check_times を再読み込み
+    global sleep_check_times
+    sleep_check_times = load_sleep_check_times()
+    
+    # 各ユーザーの睡眠チェック時間をスケジュール
     for user_id, time_data in sleep_check_times.items():
         hour = time_data.get("hour", 1)
         minute = time_data.get("minute", 0)
         print(f"🛌 スケジュール設定: ユーザー {user_id} → {hour}:{minute}")
+        
         scheduler.add_job(
             check_user_sleep_status,
             'cron',
@@ -215,7 +224,7 @@ def schedule_sleep_checks():
 
 @bot.event
 async def on_ready():
-    global session
+    global session, sleep_check_times
     try:
         if session is None:
             session = aiohttp.ClientSession()
@@ -230,33 +239,32 @@ async def on_ready():
         # データを再読み込み
         global daily_notifications
         daily_notifications = load_daily_notifications()
+        sleep_check_times = load_sleep_check_times()  # ← この行を追加
 
         # すべてのジョブをクリアして再設定
         scheduler.remove_all_jobs()
         setup_periodic_reload()
-        schedule_notifications()    # 通常の通知をスケジュール
-        schedule_daily_todos()      # 毎日Todoのスケジュール
-        schedule_sleep_checks()
+        schedule_notifications()
+        schedule_daily_todos()
+        schedule_sleep_check()  # ← 関数名を修正（sなし）
 
-        print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
-        print("📅 毎日通知のスケジュールを設定したよ！")
-        print("現在のJST時刻:", datetime.datetime.now(JST))
-        print("登録されているTodo:", daily_notifications)
-        print("スケジュールされたジョブ:")
+        print("スケジュールを設定しました。")
         print("🗓️ sleep_check_times:", sleep_check_times)
+        print("スケジュールされたジョブ:")
         for job in scheduler.get_jobs():
             print(f"- {job.id}: 次回実行 {job.next_run_time}")
+            
     except Exception as e:
         print(f"エラー: {e}")
 
 @bot.event
 async def on_resumed():
     print("⚡ Botが再接続したよ！スケジュールを立て直すね！")
-    scheduler.remove_all_jobs()  # 一旦スケジュールを全部消す
-    setup_periodic_reload()      # 定期的な再読み込みスケジュールを追加
-    schedule_notifications()     # 通知スケジュールし直し
-    schedule_daily_todos()       # 毎日Todoスケジュールし直し
-    schedule_sleep_checks()
+    scheduler.remove_all_jobs()
+    setup_periodic_reload()
+    schedule_notifications()
+    schedule_daily_todos()
+    schedule_sleep_check()
     
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
@@ -479,7 +487,7 @@ async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minu
     sleep_check_times[user_id] = {"hour": hour, "minute": minute}
     save_sleep_check_times(sleep_check_times)
 
-    schedule_sleep_checks()
+    schedule_sleep_check()  # ← 関数名を修正（sなし）
 
     await interaction.response.send_message(f"✅ 毎日 {hour:02d}:{minute:02d} に寝たほうがいいよ～メッセージを送るようにしたよ！", ephemeral=True)
 
@@ -664,15 +672,17 @@ def setup_periodic_reload():
     )
 
 async def reload_all_data():
-    global notifications, daily_notifications, conversation_logs
+    global notifications, daily_notifications, conversation_logs, sleep_check_times
     print("データを再読み込みします...")
     notifications = load_notifications()
     daily_notifications = load_daily_notifications()
     conversation_logs = load_conversation_logs()
+    sleep_check_times = load_sleep_check_times()  # ← この行を追加
     
     # スケジュールも再設定
     schedule_notifications()
     schedule_daily_todos()
+    schedule_sleep_check()  # ← この行を追加
     print("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
