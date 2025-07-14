@@ -115,7 +115,7 @@ def save_conversation_logs(logs):
                 "content": m["parts"][0]["text"]
             })
         if insert_data:
-            requests.post(f"{SUPABASE_URL}/rest/v1/", headers=SUPABASE_HEADERS, json=insert_data)
+            requests.post(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
 
 # ← 通知データ
 def load_notifications():
