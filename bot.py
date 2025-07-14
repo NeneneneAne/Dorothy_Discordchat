@@ -51,6 +51,9 @@ SUPABASE_HEADERS = {
 # メッセージ履歴を管理（最大5件）
 conversation_logs = {}
 
+ # user_idごとの時間設定 {"hour": int, "minute": int}
+sleep_check_times = {}
+
 # インテント設定
 intents = discord.Intents.default()
 intents.dm_messages = True
@@ -60,6 +63,27 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
 print(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
+
+def load_sleep_check_times():
+    url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        return {row["user_id"]: {"hour": row["hour"], "minute": row["minute"]} for row in response.json()}
+    return {}
+
+def save_sleep_check_times(data):
+    for user_id, time_data in data.items():
+        # まず削除
+        url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?user_id=eq.{user_id}"
+        requests.delete(url, headers=SUPABASE_HEADERS)
+
+        # 再登録
+        insert_data = {
+            "user_id": user_id,
+            "hour": time_data["hour"],
+            "minute": time_data["minute"]
+        }
+        requests.post(f"{SUPABASE_URL}/rest/v1/sleep_check_times", headers=SUPABASE_HEADERS, json=[insert_data])
 
 # 会話ログの読み書き
 def load_conversation_logs():
@@ -185,6 +209,8 @@ async def on_ready():
         # データを再読み込み
         global daily_notifications
         daily_notifications = load_daily_notifications()
+
+        schedule_sleep_check()
 
         # すべてのジョブをクリアして再設定
         scheduler.remove_all_jobs()
@@ -419,6 +445,21 @@ async def delete_message(interaction: discord.Interaction, message_id: str):
         await interaction.response.send_message("❌ メッセージを削除する権限がないよ～！", ephemeral=True)
     except ValueError:
         await interaction.response.send_message("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
+        
+# 夜ふかし注意時間設定コマンド
+@bot.tree.command(name="set_sleep_check_time", description="寝る時間チェックの送信時刻を設定するよ！（24時間制）")
+async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minute: int):
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        await interaction.response.send_message("⛔ 時間の形式が正しくないよ！(0-23時, 0-59分)", ephemeral=True)
+        return
+
+    user_id = str(interaction.user.id)
+    sleep_check_times[user_id] = {"hour": hour, "minute": minute}
+    save_sleep_check_times(sleep_check_times)
+
+    schedule_sleep_checks()
+
+    await interaction.response.send_message(f"✅ 毎日 {hour:02d}:{minute:02d} に寝たほうがいいよ～メッセージを送るようにしたよ！", ephemeral=True)
 
 # Gemini APIを使った会話
 CHARACTER_PERSONALITY = """
@@ -624,5 +665,42 @@ async def send_user_todo(user_id: int):
             print(f"ユーザー {user_id} にTodoを送信しました")
     except Exception as e:
         print(f"Todo送信エラー (ユーザー {user_id}): {e}")
+
+def schedule_sleep_checks():
+    # 既存の sleep_check_ 関連のジョブを削除
+    for job in scheduler.get_jobs():
+        if "sleep_check_" in job.id:
+            scheduler.remove_job(job.id)
+
+    for user_id, time_data in sleep_check_times.items():
+        scheduler.add_job(
+            check_user_sleep_status,
+            'cron',
+            hour=time_data.get("hour", 1),
+            minute=time_data.get("minute", 0),
+            args=[user_id],
+            id=f"sleep_check_{user_id}",
+            replace_existing=True,
+            timezone=JST
+        )
+
+async def check_user_sleep_status(user_id: str):
+    try:
+        user = await bot.fetch_user(int(user_id))
+        if user and user.status == discord.Status.online:
+            message_text = "もうこんな時間だよ〜！はやくねたほうがいいよー💤"
+            await user.send(message_text)
+            now = datetime.datetime.now(JST)
+            if user_id not in conversation_logs:
+                conversation_logs[user_id] = []
+            conversation_logs[user_id].append({
+                "role": "model",
+                "parts": [{"text": message_text}],
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")
+            })
+            conversation_logs[user_id] = conversation_logs[user_id][-7:]
+            save_conversation_logs(conversation_logs)
+    except Exception as e:
+        print(f"{user_id} への睡眠チェック中にエラー: {e}")
 
 bot.run(TOKEN)
