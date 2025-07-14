@@ -236,7 +236,7 @@ async def on_ready():
         setup_periodic_reload()
         schedule_notifications()    # 通常の通知をスケジュール
         schedule_daily_todos()      # 毎日Todoのスケジュール
-        schedule_sleep_check()
+        schedule_sleep_checks()
 
         print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
         print("📅 毎日通知のスケジュールを設定したよ！")
@@ -256,7 +256,7 @@ async def on_resumed():
     setup_periodic_reload()      # 定期的な再読み込みスケジュールを追加
     schedule_notifications()     # 通知スケジュールし直し
     schedule_daily_todos()       # 毎日Todoスケジュールし直し
-    schedule_sleep_check()
+    schedule_sleep_checks()
     
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
