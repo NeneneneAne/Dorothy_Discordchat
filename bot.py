@@ -453,9 +453,8 @@ async def get_gemini_response(user_id, user_input):
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
-    conversation_logs[user_id] = conversation_logs[user_id][-14:]
-    
-    # APIに送るmessagesを作成（timestamp除外）
+    conversation_logs[user_id] = conversation_logs[user_id][-7:]  # トークン節約のため10件に減らす
+
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     for m in conversation_logs[user_id]:
         messages.append({
@@ -463,7 +462,7 @@ async def get_gemini_response(user_id, user_input):
             "parts": m["parts"]
         })
 
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"  # ← 修正
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
@@ -474,20 +473,19 @@ async def get_gemini_response(user_id, user_input):
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
 
-            # モデルの返事もtimestamp付きで保存
             conversation_logs[user_id].append({
                 "role": "model",
                 "parts": [{"text": reply_text}],
                 "timestamp": current_time
             })
-            conversation_logs[user_id] = conversation_logs[user_id][-14:]
+            conversation_logs[user_id] = conversation_logs[user_id][-7:]
             save_conversation_logs(conversation_logs)
             return reply_text
         else:
             if response.status == 429:
                 return "⚠️ 今はおしゃべりの回数が上限に達しちゃったみたい！明日また話そうね～！"
             else:
-                return "⚠️ ごめんね、うまくお返事できなかったよ～！またあとで試してみてね！"
+                return f"⚠️ ごめんね、うまくお返事できなかったよ～！（{response.status}）"
 
 async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
     global session
@@ -510,7 +508,7 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
 
     messages.append({"role": "user", "parts": parts})
 
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
