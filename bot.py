@@ -192,6 +192,27 @@ def save_daily_notifications(daily_notifications):
 
 daily_notifications = load_daily_notifications()
 
+def schedule_sleep_checks():
+    print("🌙 sleep_check_times をスケジューリングします...")
+    for job in scheduler.get_jobs():
+        if "sleep_check_" in job.id:
+            scheduler.remove_job(job.id)
+
+    for user_id, time_data in sleep_check_times.items():
+        hour = time_data.get("hour", 1)
+        minute = time_data.get("minute", 0)
+        print(f"🛌 スケジュール設定: ユーザー {user_id} → {hour}:{minute}")
+        scheduler.add_job(
+            check_user_sleep_status,
+            'cron',
+            hour=hour,
+            minute=minute,
+            args=[user_id],
+            id=f"sleep_check_{user_id}",
+            replace_existing=True,
+            timezone=JST
+        )
+
 @bot.event
 async def on_ready():
     global session
@@ -665,24 +686,6 @@ async def send_user_todo(user_id: int):
             print(f"ユーザー {user_id} にTodoを送信しました")
     except Exception as e:
         print(f"Todo送信エラー (ユーザー {user_id}): {e}")
-
-def schedule_sleep_checks():
-    # 既存の sleep_check_ 関連のジョブを削除
-    for job in scheduler.get_jobs():
-        if "sleep_check_" in job.id:
-            scheduler.remove_job(job.id)
-
-    for user_id, time_data in sleep_check_times.items():
-        scheduler.add_job(
-            check_user_sleep_status,
-            'cron',
-            hour=time_data.get("hour", 1),
-            minute=time_data.get("minute", 0),
-            args=[user_id],
-            id=f"sleep_check_{user_id}",
-            replace_existing=True,
-            timezone=JST
-        )
 
 async def check_user_sleep_status(user_id: str):
     try:
