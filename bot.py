@@ -463,7 +463,7 @@ async def get_gemini_response(user_id, user_input):
             "parts": m["parts"]
         })
 
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
