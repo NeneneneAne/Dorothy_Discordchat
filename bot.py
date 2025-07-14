@@ -231,19 +231,19 @@ async def on_ready():
         global daily_notifications
         daily_notifications = load_daily_notifications()
 
-        schedule_sleep_check()
-
         # すべてのジョブをクリアして再設定
         scheduler.remove_all_jobs()
         setup_periodic_reload()
         schedule_notifications()    # 通常の通知をスケジュール
         schedule_daily_todos()      # 毎日Todoのスケジュール
+        schedule_sleep_check()
 
         print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
         print("📅 毎日通知のスケジュールを設定したよ！")
         print("現在のJST時刻:", datetime.datetime.now(JST))
         print("登録されているTodo:", daily_notifications)
         print("スケジュールされたジョブ:")
+        print("🗓️ sleep_check_times:", sleep_check_times)
         for job in scheduler.get_jobs():
             print(f"- {job.id}: 次回実行 {job.next_run_time}")
     except Exception as e:
@@ -256,7 +256,8 @@ async def on_resumed():
     setup_periodic_reload()      # 定期的な再読み込みスケジュールを追加
     schedule_notifications()     # 通知スケジュールし直し
     schedule_daily_todos()       # 毎日Todoスケジュールし直し
-
+    schedule_sleep_check()
+    
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
 async def set_notification(interaction: discord.Interaction, date: str, time: str, message: str, repeat: bool = False):
