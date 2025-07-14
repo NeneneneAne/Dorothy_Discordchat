@@ -6,6 +6,7 @@ import datetime
 import pytz
 import base64
 import asyncio
+import logging
 from flask import Flask
 import threading
 import os
@@ -32,11 +33,15 @@ def run():
 thread = threading.Thread(target=run)
 thread.start()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # 設定
 TOKEN = os.getenv('TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GUILD_ID = int(os.getenv("GUILD_ID")) 
 DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
@@ -58,6 +63,8 @@ sleep_check_times = {}
 intents = discord.Intents.default()
 intents.dm_messages = True
 intents.message_content = True
+intents.presences = True
+intents.members = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
@@ -700,10 +707,24 @@ async def send_user_todo(user_id: int):
 
 async def check_user_sleep_status(user_id: str):
     try:
-        user = await bot.fetch_user(int(user_id))
-        if user and user.status == discord.Status.online:
+        # ギルドを取得
+        guild = bot.get_guild(GUILD_ID)
+        if not guild:
+            logger.warning("❌ ギルドが取得できません。GUILD_IDが正しいか確認してね")
+            return
+
+        # メンバー情報を取得
+        member = guild.get_member(int(user_id))
+        if member is None:
+            logger.warning(f"⚠️ ユーザー {user_id} はこのサーバーにいないよ")
+            return
+
+        # ステータスがオンラインのときだけ通知
+        if member.status == discord.Status.online:
             message_text = "もうこんな時間だよ〜！はやくねたほうがいいよー💤"
-            await user.send(message_text)
+            user = await bot.fetch_user(int(user_id))
+            await user.send(message_text)  # DMで送信
+
             now = datetime.datetime.now(JST)
             if user_id not in conversation_logs:
                 conversation_logs[user_id] = []
@@ -714,7 +735,12 @@ async def check_user_sleep_status(user_id: str):
             })
             conversation_logs[user_id] = conversation_logs[user_id][-7:]
             save_conversation_logs(conversation_logs)
-    except Exception as e:
-        print(f"{user_id} への睡眠チェック中にエラー: {e}")
 
+            logger.info(f"✅ {user_id} に夜ふかし通知をDMで送信しました")
+        else:
+            logger.info(f"🛌 ユーザー {user_id} はオンラインではありません（status: {member.status}）")
+
+    except Exception as e:
+        logger.error(f"⚠️ {user_id} への睡眠チェック中にエラー: {e}")
+        
 bot.run(TOKEN)
