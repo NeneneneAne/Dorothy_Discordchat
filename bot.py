@@ -256,7 +256,7 @@ def start_twitter_bot():
                     # リプライ送信
                     try:
                         api.update_status(
-                            status=f"@{tweet.author.username} {response_text}",
+                            status=response_text,
                             in_reply_to_status_id=tweet.id,
                             auto_populate_reply_metadata=True
                         )
