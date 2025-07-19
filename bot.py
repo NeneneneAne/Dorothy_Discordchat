@@ -7,6 +7,7 @@ import pytz
 import base64
 import asyncio
 import logging
+import tweepy
 from flask import Flask
 import threading
 import os
@@ -35,6 +36,9 @@ thread.start()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+twitter_thread = threading.Thread(target=start_twitter_bot)
+twitter_thread.start()
 
 # 設定
 TOKEN = os.getenv('TOKEN')
@@ -228,6 +232,46 @@ def schedule_sleep_check():
             replace_existing=True,
             timezone=JST
         )
+
+def start_twitter_bot():
+    try:
+        auth = tweepy.OAuth1UserHandler(
+            os.getenv("TWITTER_CONSUMER_KEY"),
+            os.getenv("TWITTER_CONSUMER_SECRET"),
+            os.getenv("TWITTER_ACCESS_TOKEN"),
+            os.getenv("TWITTER_ACCESS_SECRET")
+        )
+        api = tweepy.API(auth)
+
+        bot_username = os.getenv("TWITTER_BOT_USERNAME")
+
+        class MentionListener(tweepy.StreamingClient):
+            def on_tweet(self, tweet):
+                if tweet.author_id == api.verify_credentials().id:
+                    return  # 自分自身には反応しない
+
+                if f"@{bot_username.lower()}" in tweet.text.lower():
+                    print(f"📨 メンション受信: {tweet.text}")
+                    
+                    # Gemini で応答を生成
+                    response_text = asyncio.run(get_gemini_response(str(tweet.author_id), tweet.text))
+                    
+                    # リプライ送信
+                    try:
+                        api.update_status(
+                            status=f"@{tweet.author.username} {response_text}",
+                            in_reply_to_status_id=tweet.id,
+                            auto_populate_reply_metadata=True
+                        )
+                        print(f"✅ リプライ送信: {response_text}")
+                    except Exception as e:
+                        print(f"❌ リプライ送信失敗: {e}")
+
+        stream = MentionListener(os.getenv("TWITTER_BEARER_TOKEN"))
+        stream.add_rules(tweepy.StreamRule(f"@{bot_username}"))
+        stream.filter(tweet_fields=["author_id", "text"])
+    except Exception as e:
+        print(f"❌ TwitterBot起動エラー: {e}")
 
 @bot.event
 async def on_ready():
