@@ -37,9 +37,6 @@ thread.start()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-twitter_thread = threading.Thread(target=start_twitter_bot)
-twitter_thread.start()
-
 # 設定
 TOKEN = os.getenv('TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -786,5 +783,8 @@ async def check_user_sleep_status(user_id: str):
 
     except Exception as e:
         logger.error(f"⚠️ {user_id} への睡眠チェック中にエラー: {e}")
-        
+
+twitter_thread = threading.Thread(target=start_twitter_bot)
+twitter_thread.start()
+
 bot.run(TOKEN)
