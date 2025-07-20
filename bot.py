@@ -70,7 +70,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
-print(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
+logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
 
 def load_sleep_check_times():
     url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?select=*"
@@ -202,7 +202,7 @@ daily_notifications = load_daily_notifications()
 
 def schedule_sleep_check():
     """睡眠チェックのスケジュールを設定"""
-    print("🌙 sleep_check_times をスケジューリングします...")
+    logger.info("🌙 sleep_check_times をスケジューリングします...")
     
     # 既存の睡眠チェック関連ジョブを削除
     for job in scheduler.get_jobs():
@@ -217,7 +217,7 @@ def schedule_sleep_check():
     for user_id, time_data in sleep_check_times.items():
         hour = time_data.get("hour", 1)
         minute = time_data.get("minute", 0)
-        print(f"🛌 スケジュール設定: ユーザー {user_id} → {hour}:{minute}")
+        logger.info(f"🛌 スケジュール設定: ユーザー {user_id} → {hour}:{minute}")
         
         scheduler.add_job(
             check_user_sleep_status,
@@ -248,7 +248,7 @@ def start_twitter_bot():
                     return  # 自分自身には反応しない
 
                 if f"@{bot_username.lower()}" in tweet.text.lower():
-                    print(f"📨 メンション受信: {tweet.text}")
+                    logger.info(f"📨 メンション受信: {tweet.text}")
                     
                     # Gemini で応答を生成
                     response_text = asyncio.run(get_gemini_response(str(tweet.author_id), tweet.text))
@@ -260,15 +260,15 @@ def start_twitter_bot():
                             in_reply_to_status_id=tweet.id,
                             auto_populate_reply_metadata=True
                         )
-                        print(f"✅ リプライ送信: {response_text}")
+                        logger.info(f"✅ リプライ送信: {response_text}")
                     except Exception as e:
-                        print(f"❌ リプライ送信失敗: {e}")
+                        logger.error(f"❌ リプライ送信失敗: {e}")
 
         stream = MentionListener(os.getenv("TWITTER_BEARER_TOKEN"))
         stream.add_rules(tweepy.StreamRule(f"@{bot_username}"))
         stream.filter(tweet_fields=["author_id", "text"])
     except Exception as e:
-        print(f"❌ TwitterBot起動エラー: {e}")
+        logger.error(f"❌ TwitterBot起動エラー: {e}")
 
 @bot.event
 async def on_ready():
@@ -278,7 +278,7 @@ async def on_ready():
             session = aiohttp.ClientSession()
             
         await bot.change_presence(activity=discord.Game(name="ハニーとおしゃべり"))
-        print(f"Logged in as {bot.user}")
+        logger.error(f"Logged in as {bot.user}")
         await bot.tree.sync()
 
         # スケジューラーを開始
@@ -296,18 +296,18 @@ async def on_ready():
         schedule_daily_todos()
         schedule_sleep_check()  # ← 関数名を修正（sなし）
 
-        print("スケジュールを設定しました。")
-        print("🗓️ sleep_check_times:", sleep_check_times)
-        print("スケジュールされたジョブ:")
+        logger.error("スケジュールを設定しました。")
+        logger.error("🗓️ sleep_check_times:", sleep_check_times)
+        logger.error("スケジュールされたジョブ:")
         for job in scheduler.get_jobs():
-            print(f"- {job.id}: 次回実行 {job.next_run_time}")
+            logger.error(f"- {job.id}: 次回実行 {job.next_run_time}")
             
     except Exception as e:
-        print(f"エラー: {e}")
+        logger.error(f"エラー: {e}")
 
 @bot.event
 async def on_resumed():
-    print("⚡ Botが再接続したよ！スケジュールを立て直すね！")
+    logger.error("⚡ Botが再接続したよ！スケジュールを立て直すね！")
     scheduler.remove_all_jobs()
     setup_periodic_reload()
     schedule_notifications()
@@ -449,7 +449,7 @@ async def send_notification_message(user_id, info):
                     break
 
     except discord.NotFound:
-        print(f"Error: User with ID {user_id} not found.")
+        logger.error(f"Error: User with ID {user_id} not found.")
 
 @bot.tree.command(name="add_daily_todo", description="毎日送信する通知を追加するよ！")
 async def add_daily_todo(interaction: discord.Interaction, message: str):
@@ -587,7 +587,7 @@ async def get_gemini_response(user_id, user_input):
     data = {"contents": messages}
 
     async with session.post(url, headers=headers, params=params, json=data) as response:
-        print(f"Gemini API status: {response.status}")
+        logger.error(f"Gemini API status: {response.status}")
         if response.status == 200:
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
@@ -692,7 +692,7 @@ def schedule_notifications():
                 pass
 
 def schedule_daily_todos():
-    print("毎日のTodoスケジュールを設定します...")
+    logger.error("毎日のTodoスケジュールを設定します...")
     for user_id, data in daily_notifications.items():
         hour = data.get("time", {}).get("hour", 8)
         minute = data.get("time", {}).get("minute", 0)
@@ -708,7 +708,7 @@ def schedule_daily_todos():
             replace_existing=True,  # ← これを追加！
             timezone=JST  # タイムゾーンを明示的に指定
         )
-        print(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
+        logger.error(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
 
 def setup_periodic_reload():
     scheduler.add_job(
@@ -721,7 +721,7 @@ def setup_periodic_reload():
 
 async def reload_all_data():
     global notifications, daily_notifications, conversation_logs, sleep_check_times
-    print("データを再読み込みします...")
+    logger.error("データを再読み込みします...")
     notifications = load_notifications()
     daily_notifications = load_daily_notifications()
     conversation_logs = load_conversation_logs()
@@ -731,20 +731,20 @@ async def reload_all_data():
     schedule_notifications()
     schedule_daily_todos()
     schedule_sleep_check()  # ← この行を追加
-    print("データの再読み込みが完了しました")
+    logger.error("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
     try:
         user_data = daily_notifications.get(str(user_id), {})
         todos = user_data.get("todos", [])
-        print(f"ユーザー {user_id} のTodo送信: {todos}")
+        logger.error(f"ユーザー {user_id} のTodo送信: {todos}")
         if todos:
             user = await bot.fetch_user(user_id)
             msg = "おはよ～ハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
             await user.send(msg)
-            print(f"ユーザー {user_id} にTodoを送信しました")
+            logger.error(f"ユーザー {user_id} にTodoを送信しました")
     except Exception as e:
-        print(f"Todo送信エラー (ユーザー {user_id}): {e}")
+        logger.error(f"Todo送信エラー (ユーザー {user_id}): {e}")
 
 async def check_user_sleep_status(user_id: str):
     try:
