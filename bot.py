@@ -2,6 +2,7 @@ import discord
 import requests
 import aiohttp
 import json
+import time
 import datetime
 import pytz
 import base64
@@ -239,34 +240,33 @@ def start_twitter_bot():
             os.getenv("TWITTER_ACCESS_SECRET")
         )
         api = tweepy.API(auth)
+        bot_username = os.getenv("TWITTER_BOT_USERNAME").lower()
 
-        bot_username = os.getenv("TWITTER_BOT_USERNAME")
+        since_id = None
 
-        class MentionListener(tweepy.StreamingClient):
-            def on_tweet(self, tweet):
-                if tweet.author_id == api.verify_credentials().id:
-                    return  # 自分自身には反応しない
+        while True:
+            try:
+                mentions = api.mentions_timeline(since_id=since_id, tweet_mode='extended')
+                for tweet in reversed(mentions):
+                    if tweet.user.screen_name.lower() == bot_username:
+                        continue  # 自分自身は無視
 
-                if f"@{bot_username.lower()}" in tweet.text.lower():
-                    logger.info(f"📨 メンション受信: {tweet.text}")
-                    
-                    # Gemini で応答を生成
-                    response_text = asyncio.run(get_gemini_response(str(tweet.author_id), tweet.text))
-                    
-                    # リプライ送信
-                    try:
-                        api.update_status(
-                            status=response_text,
-                            in_reply_to_status_id=tweet.id,
-                            auto_populate_reply_metadata=True
-                        )
-                        logger.info(f"✅ リプライ送信: {response_text}")
-                    except Exception as e:
-                        logger.error(f"❌ リプライ送信失敗: {e}")
+                    logger.info(f"📨 メンション受信: {tweet.full_text}")
+                    response_text = asyncio.run(get_gemini_response(str(tweet.user.id), tweet.full_text))
 
-        stream = MentionListener(os.getenv("TWITTER_BEARER_TOKEN"))
-        stream.add_rules(tweepy.StreamRule(f"@{bot_username}"))
-        stream.filter(tweet_fields=["author_id", "text"])
+                    api.update_status(
+                        status=f"@{tweet.user.screen_name} {response_text}",
+                        in_reply_to_status_id=tweet.id,
+                        auto_populate_reply_metadata=True
+                    )
+                    logger.info(f"✅ リプライ送信: {response_text}")
+                    since_id = max(since_id or 1, tweet.id)
+
+                time.sleep(30)  # 30秒ごとにチェック
+            except Exception as e:
+                logger.error(f"⛔ Twitter Bot エラー: {e}")
+                time.sleep(60)
+
     except Exception as e:
         logger.error(f"❌ TwitterBot起動エラー: {e}")
 
