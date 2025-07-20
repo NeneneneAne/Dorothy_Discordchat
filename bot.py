@@ -232,6 +232,9 @@ def schedule_sleep_check():
         )
 
 def start_twitter_bot():
+    logger.warning("🚫 Twitter Botは現在無効化されています。ENABLE_TWITTER_BOT=trueで有効化できます。")
+    return
+    
     try:
         auth = tweepy.OAuth1UserHandler(
             os.getenv("TWITTER_CONSUMER_KEY"),
@@ -784,7 +787,7 @@ async def check_user_sleep_status(user_id: str):
     except Exception as e:
         logger.error(f"⚠️ {user_id} への睡眠チェック中にエラー: {e}")
 
-twitter_thread = threading.Thread(target=start_twitter_bot)
-twitter_thread.start()
+# twitter_thread = threading.Thread(target=start_twitter_bot)
+# twitter_thread.start()
 
 bot.run(TOKEN)
