@@ -6,3 +6,4 @@ requests
 aiohttp
 soundfile
 tweepy
+openai
