@@ -611,6 +611,29 @@ async def get_chatgpt_response(user_id, user_input):
     except Exception as e:
         return f"⚠️ エラーが発生したよ～！: {e}"
 
+async def get_chatgpt_response_with_image(user_id, user_input, image_url):
+    messages = [
+        {"role": "system", "content": CHARACTER_PERSONALITY},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": user_input},
+                {"type": "image_url", "image_url": {"url": image_url}}
+            ]
+        }
+    ]
+
+    try:
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-4-vision-preview",  # ← Vision対応モデルを指定
+            messages=messages,
+            max_tokens=1000
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        return f"⚠️ 画像付きでの会話に失敗しちゃったみたい！（{str(e)}）"
+        
 # DMでメッセージを受信
 @bot.event
 async def on_message(message):
