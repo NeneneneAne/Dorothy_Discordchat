@@ -563,85 +563,52 @@ CHARACTER_PERSONALITY = """
 ・相手の話や画像に自然に反応するようにしてください。
 ・会話の途中でいきなり自己紹介をしないでください
 """
-async def get_gemini_response(user_id, user_input):
-    global session
+import openai
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+async def get_chatgpt_response(user_id, user_input):
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
     now = datetime.datetime.now(JST)
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+
     conversation_logs[user_id].append({
         "role": "user",
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
-    conversation_logs[user_id] = conversation_logs[user_id][-7:]  # トークン節約のため10件に減らす
+    conversation_logs[user_id] = conversation_logs[user_id][-7:]
 
-    messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
+    # OpenAI 形式に変換
+    messages = [{"role": "system", "content": CHARACTER_PERSONALITY}]
     for m in conversation_logs[user_id]:
-        messages.append({
-            "role": m["role"],
-            "parts": m["parts"]
+        role = "user" if m["role"] == "user" else "assistant"
+        text = m["parts"][0]["text"]
+        messages.append({"role": role, "content": text})
+
+    try:
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-3.5-turbo",  # または "gpt-4" 等
+            messages=messages,
+            max_tokens=500
+        )
+        reply_text = response.choices[0].message.content.strip()
+
+        conversation_logs[user_id].append({
+            "role": "model",
+            "parts": [{"text": reply_text}],
+            "timestamp": current_time
         })
+        conversation_logs[user_id] = conversation_logs[user_id][-7:]
+        save_conversation_logs(conversation_logs)
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"  # ← 修正
-    headers = {"Content-Type": "application/json"}
-    params = {"key": GEMINI_API_KEY}
-    data = {"contents": messages}
+        return reply_text
 
-    async with session.post(url, headers=headers, params=params, json=data) as response:
-        logger.error(f"Gemini API status: {response.status}")
-        if response.status == 200:
-            response_json = await response.json()
-            reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
-
-            conversation_logs[user_id].append({
-                "role": "model",
-                "parts": [{"text": reply_text}],
-                "timestamp": current_time
-            })
-            conversation_logs[user_id] = conversation_logs[user_id][-7:]
-            save_conversation_logs(conversation_logs)
-            return reply_text
-        else:
-            if response.status == 429:
-                return "⚠️ 今はおしゃべりの回数が上限に達しちゃったみたい！明日また話そうね～！"
-            else:
-                return f"⚠️ ごめんね、うまくお返事できなかったよ～！（{response.status}）"
-
-async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
-    global session
-    if user_id not in conversation_logs:
-        conversation_logs[user_id] = []
-
-    messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
-
-    parts = []
-    if user_input:
-        parts.append({"text": user_input})
-    if image_bytes:
-        base64_image = base64.b64encode(image_bytes).decode('utf-8')
-        parts.append({
-            "inline_data": {
-                "mime_type": image_mime_type,
-                "data": base64_image
-            }
-        })
-
-    messages.append({"role": "user", "parts": parts})
-
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
-    headers = {"Content-Type": "application/json"}
-    params = {"key": GEMINI_API_KEY}
-    data = {"contents": messages}
-
-    async with session.post(url, headers=headers, params=params, json=data) as response:
-        if response.status == 200:
-            response_json = await response.json()
-            reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
-            return reply_text
-        else:
-            return f"エラー: {response.status} - {await response.text()}"
+    except openai.error.RateLimitError:
+        return "⚠️ 今はおしゃべりの上限に達しちゃったみたい！明日また話そうね～！"
+    except Exception as e:
+        return f"⚠️ エラーが発生したよ～！: {e}"
 
 # DMでメッセージを受信
 @bot.event
@@ -650,23 +617,9 @@ async def on_message(message):
         return
 
     if message.guild is None:
-        image_bytes = None
-        image_mime_type = "image/png"
-
-        if message.attachments:
-            attachment = message.attachments[0]
-            if attachment.content_type and attachment.content_type.startswith("image/"):
-                image_bytes = await attachment.read()
-                image_mime_type = attachment.content_type
-
-        if image_bytes:
-            response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
-            conversation_logs[str(message.author.id)] = []
-        else:
-            response = await get_gemini_response(str(message.author.id), message.content)
-
+        response = await get_chatgpt_response(str(message.author.id), message.content)
         await message.channel.send(response)
-        
+
     await bot.process_commands(message)
 
 # 通知スケジューリング
