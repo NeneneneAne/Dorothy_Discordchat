@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # 設定
 TOKEN = os.getenv('TOKEN')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+openai.api_key = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GUILD_ID = int(os.getenv("GUILD_ID")) 
@@ -616,8 +616,19 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    user_id = str(message.author.id)
+
     if message.guild is None:
-        response = await get_chatgpt_response(str(message.author.id), message.content)
+        if message.attachments:
+            attachment = message.attachments[0]
+            if attachment.content_type and attachment.content_type.startswith("image/"):
+                image_url = attachment.url
+                response = await get_chatgpt_response_with_image(user_id, message.content, image_url)
+            else:
+                response = await get_chatgpt_response(user_id, message.content)
+        else:
+            response = await get_chatgpt_response(user_id, message.content)
+
         await message.channel.send(response)
 
     await bot.process_commands(message)
