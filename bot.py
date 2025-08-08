@@ -72,7 +72,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
-logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
+logger.info(f"使用中のOpenAIキー: {openai.api_key[:10]}****")
 
 def load_sleep_check_times():
     url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?select=*"
