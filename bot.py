@@ -590,7 +590,7 @@ async def get_chatgpt_response(user_id, user_input):
 
     try:
         response = await openai.ChatCompletion.acreate(
-            model="gpt-3.5-turbo",  # または "gpt-4" 等
+            model="gpt-5",  # または "gpt-4" 等
             messages=messages,
             max_tokens=500
         )
@@ -625,7 +625,7 @@ async def get_chatgpt_response_with_image(user_id, user_input, image_url):
 
     try:
         response = await openai.ChatCompletion.acreate(
-            model="gpt-4-vision-preview",  # ← Vision対応モデルを指定
+            model="gpt-5",  # ← Vision対応モデルを指定
             messages=messages,
             max_tokens=1000
         )
