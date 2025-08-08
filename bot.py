@@ -591,7 +591,7 @@ async def get_chatgpt_response(user_id, user_input):
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-3.5-turbo",  # または gpt-4
+            model="gpt-5",  # または gpt-4
             messages=messages,
             max_tokens=500
         )
@@ -644,7 +644,7 @@ async def get_chatgpt_response_with_image(user_id, user_input, image_url):
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",  # 画像認識対応モデルがあれば指定してください
+            model="gpt-5",  # 画像認識対応モデルがあれば指定してください
             messages=messages,
             max_tokens=1000
         )
