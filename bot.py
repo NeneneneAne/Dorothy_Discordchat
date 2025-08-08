@@ -13,6 +13,7 @@ import tweepy
 from flask import Flask
 import threading
 import os
+from openai import AsyncOpenAI
 from discord import app_commands
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -564,8 +565,8 @@ CHARACTER_PERSONALITY = """
 ・相手の話や画像に自然に反応するようにしてください。
 ・会話の途中でいきなり自己紹介をしないでください
 """
-import openai
-openai.api_key = os.getenv("OPENAI_API_KEY")
+
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def get_chatgpt_response(user_id, user_input):
     if user_id not in conversation_logs:
@@ -579,21 +580,22 @@ async def get_chatgpt_response(user_id, user_input):
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
+
     conversation_logs[user_id] = conversation_logs[user_id][-7:]
 
-    # OpenAI 形式に変換
+    # OpenAI形式に変換
     messages = [{"role": "system", "content": CHARACTER_PERSONALITY}]
     for m in conversation_logs[user_id]:
         role = "user" if m["role"] == "user" else "assistant"
-        text = m["parts"][0]["text"]
-        messages.append({"role": role, "content": text})
+        messages.append({"role": role, "content": m["parts"][0]["text"]})
 
     try:
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-5",  # または "gpt-4" 等
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",  # または gpt-4
             messages=messages,
             max_tokens=500
         )
+
         reply_text = response.choices[0].message.content.strip()
 
         conversation_logs[user_id].append({
@@ -602,34 +604,64 @@ async def get_chatgpt_response(user_id, user_input):
             "timestamp": current_time
         })
         conversation_logs[user_id] = conversation_logs[user_id][-7:]
+
         save_conversation_logs(conversation_logs)
 
         return reply_text
 
-    except openai.error.RateLimitError:
-        return "⚠️ 今はおしゃべりの上限に達しちゃったみたい！明日また話そうね～！"
     except Exception as e:
-        return f"⚠️ エラーが発生したよ～！: {e}"
+        return f"⚠️ ごめんね、エラーが発生しちゃったみたい！（{str(e)}）"
 
 async def get_chatgpt_response_with_image(user_id, user_input, image_url):
-    messages = [
-        {"role": "system", "content": CHARACTER_PERSONALITY},
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": user_input},
-                {"type": "image_url", "image_url": {"url": image_url}}
-            ]
-        }
-    ]
+    if user_id not in conversation_logs:
+        conversation_logs[user_id] = []
+
+    now = datetime.datetime.now(JST)
+    current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 会話ログにユーザーのテキストと画像URLを別々に保存
+    conversation_logs[user_id].append({
+        "role": "user",
+        "parts": [
+            {"text": user_input},
+            {"image_url": image_url}
+        ],
+        "timestamp": current_time
+    })
+    conversation_logs[user_id] = conversation_logs[user_id][-7:]
+
+    # OpenAI API用のmessages作成
+    messages = [{"role": "system", "content": CHARACTER_PERSONALITY}]
+    for m in conversation_logs[user_id]:
+        if m["role"] == "user":
+            # テキスト部分
+            messages.append({"role": "user", "content": m["parts"][0]["text"]})
+            # 画像URL部分をテキストに含める
+            if len(m["parts"]) > 1 and "image_url" in m["parts"][1]:
+                messages.append({"role": "user", "content": f"[画像URL] {m['parts'][1]['image_url']}"})
+        else:
+            messages.append({"role": "assistant", "content": m["parts"][0]["text"]})
 
     try:
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-5",  # ← Vision対応モデルを指定
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",  # 画像認識対応モデルがあれば指定してください
             messages=messages,
             max_tokens=1000
         )
-        return response.choices[0].message.content.strip()
+
+        reply_text = response.choices[0].message.content.strip()
+
+        # AIの応答をログに保存
+        conversation_logs[user_id].append({
+            "role": "model",
+            "parts": [{"text": reply_text}],
+            "timestamp": current_time
+        })
+        conversation_logs[user_id] = conversation_logs[user_id][-7:]
+
+        save_conversation_logs(conversation_logs)
+
+        return reply_text
 
     except Exception as e:
         return f"⚠️ 画像付きでの会話に失敗しちゃったみたい！（{str(e)}）"
