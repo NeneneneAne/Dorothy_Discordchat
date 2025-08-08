@@ -1,4 +1,5 @@
 import discord
+import openai
 import requests
 import aiohttp
 import json
