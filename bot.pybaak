@@ -1,11 +1,14 @@
 import discord
-import soundfile
+import requests
 import aiohttp
 import json
+import time
 import datetime
 import pytz
 import base64
 import asyncio
+import logging
+import tweepy
 from flask import Flask
 import threading
 import os
@@ -32,12 +35,15 @@ def run():
 thread = threading.Thread(target=run)
 thread.start()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # 設定
 TOKEN = os.getenv('TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-TTS_BASE_URL = os.getenv("TTS_BASE_URL", "http://localhost:50021")
+GUILD_ID = int(os.getenv("GUILD_ID")) 
 DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
@@ -52,18 +58,46 @@ SUPABASE_HEADERS = {
 # メッセージ履歴を管理（最大5件）
 conversation_logs = {}
 
+ # user_idごとの時間設定 {"hour": int, "minute": int}
+sleep_check_times = {}
+
 # インテント設定
 intents = discord.Intents.default()
 intents.dm_messages = True
 intents.message_content = True
+intents.presences = True
+intents.members = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
+logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
+
+def load_sleep_check_times():
+    url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        return {row["user_id"]: {"hour": row["hour"], "minute": row["minute"]} for row in response.json()}
+    return {}
+
+def save_sleep_check_times(data):
+    for user_id, time_data in data.items():
+        # まず削除
+        url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?user_id=eq.{user_id}"
+        requests.delete(url, headers=SUPABASE_HEADERS)
+
+        # 再登録
+        insert_data = {
+            "user_id": user_id,
+            "hour": time_data["hour"],
+            "minute": time_data["minute"]
+        }
+        requests.post(f"{SUPABASE_URL}/rest/v1/sleep_check_times", headers=SUPABASE_HEADERS, json=[insert_data])
+
 # 会話ログの読み書き
 def load_conversation_logs():
     url = f"{SUPABASE_URL}/rest/v1/conversation_logs?select=*"
-    response = s.get(url, headers=SUPABASE_HEADERS)
+    response = requests.get(url, headers=SUPABASE_HEADERS)
     if response.status_code == 200:
         data = response.json()
         logs = {}
@@ -90,7 +124,7 @@ def save_conversation_logs(logs):
                 "content": m["parts"][0]["text"]
             })
         if insert_data:
-            requests.post(f"{SUPABASE_URL}/rest/v1/", headers=SUPABASE_HEADERS, json=insert_data)
+            requests.post(f"{SUPABASE_URL}/rest/v1/conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
 
 # ← 通知データ
 def load_notifications():
@@ -167,15 +201,87 @@ def save_daily_notifications(daily_notifications):
 
 daily_notifications = load_daily_notifications()
 
+def schedule_sleep_check():
+    """睡眠チェックのスケジュールを設定"""
+    logger.info("🌙 sleep_check_times をスケジューリングします...")
+    
+    # 既存の睡眠チェック関連ジョブを削除
+    for job in scheduler.get_jobs():
+        if "sleep_check_" in job.id:
+            scheduler.remove_job(job.id)
+    
+    # sleep_check_times を再読み込み
+    global sleep_check_times
+    sleep_check_times = load_sleep_check_times()
+    
+    # 各ユーザーの睡眠チェック時間をスケジュール
+    for user_id, time_data in sleep_check_times.items():
+        hour = time_data.get("hour", 1)
+        minute = time_data.get("minute", 0)
+        logger.info(f"🛌 スケジュール設定: ユーザー {user_id} → {hour}:{minute}")
+        
+        scheduler.add_job(
+            check_user_sleep_status,
+            'cron',
+            hour=hour,
+            minute=minute,
+            args=[user_id],
+            id=f"sleep_check_{user_id}",
+            replace_existing=True,
+            timezone=JST
+        )
+
+def start_twitter_bot():
+    logger.warning("🚫 Twitter Botは現在無効化されています。ENABLE_TWITTER_BOT=trueで有効化できます。")
+    return
+    
+    try:
+        auth = tweepy.OAuth1UserHandler(
+            os.getenv("TWITTER_CONSUMER_KEY"),
+            os.getenv("TWITTER_CONSUMER_SECRET"),
+            os.getenv("TWITTER_ACCESS_TOKEN"),
+            os.getenv("TWITTER_ACCESS_SECRET")
+        )
+        api = tweepy.API(auth)
+        bot_username = os.getenv("TWITTER_BOT_USERNAME").lower()
+
+        since_id = None
+
+        while True:
+            try:
+                mentions = api.mentions_timeline(since_id=since_id, tweet_mode='extended')
+                for tweet in reversed(mentions):
+                    if tweet.user.screen_name.lower() == bot_username:
+                        continue  # 自分自身は無視
+
+                    logger.info(f"📨 メンション受信: {tweet.full_text}")
+                    response_text = asyncio.run(get_gemini_response(str(tweet.user.id), tweet.full_text))
+
+                    api.update_status(
+                        status=f"@{tweet.user.screen_name} {response_text}",
+                        in_reply_to_status_id=tweet.id,
+                        auto_populate_reply_metadata=True
+                    )
+                    logger.info(f"✅ リプライ送信: {response_text}")
+                    since_id = max(since_id or 1, tweet.id)
+
+                time.sleep(30)  # 30秒ごとにチェック
+            except Exception as e:
+                logger.error(f"⛔ Twitter Bot エラー: {e}")
+                time.sleep(60)
+
+    except Exception as e:
+        logger.error(f"❌ TwitterBot起動エラー: {e}")
+
 @bot.event
 async def on_ready():
-    global session
+    global session, sleep_check_times
     try:
         if session is None:
             session = aiohttp.ClientSession()
             
         await bot.change_presence(activity=discord.Game(name="ハニーとおしゃべり"))
-        print(f"Logged in as {bot.user}")
+        logger.error(f"Logged in as {bot.user}")
         await bot.tree.sync()
 
         # スケジューラーを開始
@@ -184,31 +290,33 @@ async def on_ready():
         # データを再読み込み
         global daily_notifications
         daily_notifications = load_daily_notifications()
+        sleep_check_times = load_sleep_check_times()  # ← この行を追加
 
         # すべてのジョブをクリアして再設定
         scheduler.remove_all_jobs()
         setup_periodic_reload()
-        schedule_notifications()    # 通常の通知をスケジュール
-        schedule_daily_todos()      # 毎日Todoのスケジュール
+        schedule_notifications()
+        schedule_daily_todos()
+        schedule_sleep_check()  # ← 関数名を修正（sなし）
 
-        print("スケジュールを設定しました。登録されているTodo:", daily_notifications)
-        print("📅 毎日通知のスケジュールを設定したよ！")
-        print("現在のJST時刻:", datetime.datetime.now(JST))
-        print("登録されているTodo:", daily_notifications)
-        print("スケジュールされたジョブ:")
+        logger.error("スケジュールを設定しました。")
+        logger.error("🗓️ sleep_check_times:", sleep_check_times)
+        logger.error("スケジュールされたジョブ:")
         for job in scheduler.get_jobs():
-            print(f"- {job.id}: 次回実行 {job.next_run_time}")
+            logger.error(f"- {job.id}: 次回実行 {job.next_run_time}")
+            
     except Exception as e:
-        print(f"エラー: {e}")
+        logger.error(f"エラー: {e}")
 
 @bot.event
 async def on_resumed():
-    print("⚡ Botが再接続したよ！スケジュールを立て直すね！")
-    scheduler.remove_all_jobs()  # 一旦スケジュールを全部消す
-    setup_periodic_reload()      # 定期的な再読み込みスケジュールを追加
-    schedule_notifications()     # 通知スケジュールし直し
-    schedule_daily_todos()       # 毎日Todoスケジュールし直し
-
+    logger.error("⚡ Botが再接続したよ！スケジュールを立て直すね！")
+    scheduler.remove_all_jobs()
+    setup_periodic_reload()
+    schedule_notifications()
+    schedule_daily_todos()
+    schedule_sleep_check()
+    
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
 async def set_notification(interaction: discord.Interaction, date: str, time: str, message: str, repeat: bool = False):
@@ -232,6 +340,44 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
     save_notifications(notifications)
     await interaction.response.send_message(f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}', ephemeral=True)
     schedule_notifications()
+    
+# タイマー設定コマンド
+@bot.tree.command(name="set_notification_after", description="○時間○分後に通知を設定するよ！")
+async def set_notification_after(interaction: discord.Interaction, hours: int, minutes: int, message: str):
+    if hours < 0 or minutes < 0 or (hours == 0 and minutes == 0):
+        await interaction.response.send_message("⛔ 1分以上後の時間を指定してね～！", ephemeral=True)
+        return
+
+    user_id = str(interaction.user.id)
+    now = datetime.datetime.now(JST)
+    future_time = now + datetime.timedelta(hours=hours, minutes=minutes)
+
+    info = {
+        "date": future_time.strftime("%m-%d"),
+        "time": future_time.strftime("%H:%M"),
+        "message": message,
+        "repeat": False
+    }
+
+    # 通知データに保存
+    if user_id not in notifications:
+        notifications[user_id] = []
+    notifications[user_id].append(info)
+    save_notifications(notifications)
+
+    # 通知ジョブを追加（即時スケジューリング）
+    scheduler.add_job(
+        send_notification_message,
+        'date',
+        run_date=future_time,
+        args=[user_id, info],
+        id=f"after_notification_{user_id}_{int(future_time.timestamp())}"  # 一意なID
+    )
+
+    await interaction.response.send_message(
+        f"⏰ {hours}時間{minutes}分後（{future_time.strftime('%H:%M')}）に「{message}」を通知するよ～！",
+        ephemeral=True
+    )
 
 # 通知一覧表示
 @bot.tree.command(name="list_notifications", description="登録してる通知を表示するよ！")
@@ -306,7 +452,7 @@ async def send_notification_message(user_id, info):
                     break
 
     except discord.NotFound:
-        print(f"Error: User with ID {user_id} not found.")
+        logger.error(f"Error: User with ID {user_id} not found.")
 
 @bot.tree.command(name="add_daily_todo", description="毎日送信する通知を追加するよ！")
 async def add_daily_todo(interaction: discord.Interaction, message: str):
@@ -380,29 +526,21 @@ async def delete_message(interaction: discord.Interaction, message_id: str):
         await interaction.response.send_message("❌ メッセージを削除する権限がないよ～！", ephemeral=True)
     except ValueError:
         await interaction.response.send_message("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
-
-@bot.tree.command(name="join", description="VCに参加するよ～！")
-async def join(interaction: discord.Interaction):
-    member = interaction.guild.get_member(interaction.user.id)
-
-    if member is None or member.voice is None or member.voice.channel is None:
-        await interaction.response.send_message("❌ VCに入ってから呼んでね～！", ephemeral=True)
+        
+# 夜ふかし注意時間設定コマンド
+@bot.tree.command(name="set_sleep_check_time", description="寝る時間チェックの送信時刻を設定するよ！（24時間制）")
+async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minute: int):
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        await interaction.response.send_message("⛔ 時間の形式が正しくないよ！(0-23時, 0-59分)", ephemeral=True)
         return
 
-    channel = member.voice.channel
-    await channel.connect()
-    await interaction.response.send_message(f"✅ ボイスチャンネル「{channel.name}」に入ったよ～！", ephemeral=True)
+    user_id = str(interaction.user.id)
+    sleep_check_times[user_id] = {"hour": hour, "minute": minute}
+    save_sleep_check_times(sleep_check_times)
 
-@bot.tree.command(name="leave", description="VCから抜けるよ～！")
-async def leave(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+    schedule_sleep_check()  # ← 関数名を修正（sなし）
 
-    vc = interaction.guild.voice_client
-    if vc:
-        await vc.disconnect()
-        await interaction.followup.send("👋 VCから抜けたよ～！", ephemeral=True)
-    else:
-        await interaction.followup.send("❌ ボイスチャンネルに入ってないよ～！", ephemeral=True)
+    await interaction.response.send_message(f"✅ 毎日 {hour:02d}:{minute:02d} に寝たほうがいいよ～メッセージを送るようにしたよ！", ephemeral=True)
 
 # Gemini APIを使った会話
 CHARACTER_PERSONALITY = """
@@ -420,7 +558,7 @@ CHARACTER_PERSONALITY = """
 ・会話の中で絵文字を使用しないでください、ただし絵文字は要求された場合は使用可能です。
 ・語尾に わよ は使用しないでください
 ・小学生程度の子どものような喋り方です
-・ひらがなを使って話します
+・漢字を使わずにひらがな、カタカナのみを使って話します
 ・敬語は使わない
 ・相手の話や画像に自然に反応するようにしてください。
 ・会話の途中でいきなり自己紹介をしないでください
@@ -437,9 +575,8 @@ async def get_gemini_response(user_id, user_input):
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
-    conversation_logs[user_id] = conversation_logs[user_id][-14:]
-    
-    # APIに送るmessagesを作成（timestamp除外）
+    conversation_logs[user_id] = conversation_logs[user_id][-7:]  # トークン節約のため10件に減らす
+
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     for m in conversation_logs[user_id]:
         messages.append({
@@ -447,30 +584,30 @@ async def get_gemini_response(user_id, user_input):
             "parts": m["parts"]
         })
 
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"  # ← 修正
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
 
     async with session.post(url, headers=headers, params=params, json=data) as response:
+        logger.error(f"Gemini API status: {response.status}")
         if response.status == 200:
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
 
-            # モデルの返事もtimestamp付きで保存
             conversation_logs[user_id].append({
                 "role": "model",
                 "parts": [{"text": reply_text}],
                 "timestamp": current_time
             })
-            conversation_logs[user_id] = conversation_logs[user_id][-14:]
+            conversation_logs[user_id] = conversation_logs[user_id][-7:]
             save_conversation_logs(conversation_logs)
             return reply_text
         else:
             if response.status == 429:
                 return "⚠️ 今はおしゃべりの回数が上限に達しちゃったみたい！明日また話そうね～！"
             else:
-                return "⚠️ ごめんね、うまくお返事できなかったよ～！またあとで試してみてね！"
+                return f"⚠️ ごめんね、うまくお返事できなかったよ～！（{response.status}）"
 
 async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
     global session
@@ -493,7 +630,7 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
 
     messages.append({"role": "user", "parts": parts})
 
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
@@ -506,19 +643,16 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
         else:
             return f"エラー: {response.status} - {await response.text()}"
 
+# DMでメッセージを受信
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
 
-    response = None
-
-    # DMからのメッセージ
     if message.guild is None:
         image_bytes = None
         image_mime_type = "image/png"
 
-        # 画像が添付されているか確認
         if message.attachments:
             attachment = message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image/"):
@@ -526,66 +660,13 @@ async def on_message(message):
                 image_mime_type = attachment.content_type
 
         if image_bytes:
-            response = await get_gemini_response_with_image(
-                user_id=str(message.author.id),
-                user_input=message.content,
-                image_bytes=image_bytes,
-                image_mime_type=image_mime_type
-            )
-            # 画像を送ったあとはログをリセット（任意）
+            response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
             conversation_logs[str(message.author.id)] = []
         else:
-            response = await get_gemini_response(
-                user_id=str(message.author.id),
-                user_input=message.content
-            )
+            response = await get_gemini_response(str(message.author.id), message.content)
 
         await message.channel.send(response)
-
-        # VCに接続していれば読み上げを試みる
-        for guild in bot.guilds:
-            member = guild.get_member(message.author.id)
-            if member and member.voice and member.voice.channel:
-                vc = discord.utils.get(bot.voice_clients, guild=guild)
-                if vc and vc.is_connected():
-                    try:
-                        import aiohttp
-                        async with aiohttp.ClientSession() as session:
-                            async with session.post(
-                                f"{TTS_BASE_URL}/audio_query",
-                                params={"text": response, "speaker": 1},
-                                timeout=aiohttp.ClientTimeout(total=10)
-                            ) as query:
-                                if query.status != 200:
-                                    raise Exception("audio_query failed")
-                                audio_query = await query.text()
-
-                            async with session.post(
-                                f"{TTS_BASE_URL}/synthesis",
-                                params={"speaker": 1},
-                                headers={"Content-Type": "application/json"},
-                                data=audio_query,
-                                timeout=aiohttp.ClientTimeout(total=15)
-                            ) as synthesis:
-                                if synthesis.status != 200:
-                                    raise Exception("synthesis failed")
-                                with open("tts_output.wav", "wb") as f:
-                                    f.write(await synthesis.read())
-
-                        if not vc.is_playing():
-                            vc.play(discord.FFmpegPCMAudio("tts_output.wav", executable="ffmpeg"))
-                    except Exception as e:
-                        print(f"[TTS ERROR] 読み上げに失敗: {e}")
-                break  # 最初に見つかったVCだけに再生
-    else:
-        # サーバー内のメッセージも処理（任意で拡張）
-        response = await get_gemini_response(
-            user_id=str(message.author.id),
-            user_input=message.content
-        )
-        await message.channel.send(response)
-
-    # スラッシュコマンドなどを処理
+        
     await bot.process_commands(message)
 
 # 通知スケジューリング
@@ -614,7 +695,7 @@ def schedule_notifications():
                 pass
 
 def schedule_daily_todos():
-    print("毎日のTodoスケジュールを設定します...")
+    logger.error("毎日のTodoスケジュールを設定します...")
     for user_id, data in daily_notifications.items():
         hour = data.get("time", {}).get("hour", 8)
         minute = data.get("time", {}).get("minute", 0)
@@ -630,7 +711,7 @@ def schedule_daily_todos():
             replace_existing=True,  # ← これを追加！
             timezone=JST  # タイムゾーンを明示的に指定
         )
-        print(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
+        logger.error(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
 
 def setup_periodic_reload():
     scheduler.add_job(
@@ -642,28 +723,71 @@ def setup_periodic_reload():
     )
 
 async def reload_all_data():
-    global notifications, daily_notifications, conversation_logs
-    print("データを再読み込みします...")
+    global notifications, daily_notifications, conversation_logs, sleep_check_times
+    logger.error("データを再読み込みします...")
     notifications = load_notifications()
     daily_notifications = load_daily_notifications()
     conversation_logs = load_conversation_logs()
+    sleep_check_times = load_sleep_check_times()  # ← この行を追加
     
     # スケジュールも再設定
     schedule_notifications()
     schedule_daily_todos()
-    print("データの再読み込みが完了しました")
+    schedule_sleep_check()  # ← この行を追加
+    logger.error("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
     try:
         user_data = daily_notifications.get(str(user_id), {})
         todos = user_data.get("todos", [])
-        print(f"ユーザー {user_id} のTodo送信: {todos}")
+        logger.error(f"ユーザー {user_id} のTodo送信: {todos}")
         if todos:
             user = await bot.fetch_user(user_id)
             msg = "おはよ～ハニー！今日のToDoリストだよ～！\n" + "\n".join([f"- {todo}" for todo in todos])
             await user.send(msg)
-            print(f"ユーザー {user_id} にTodoを送信しました")
+            logger.error(f"ユーザー {user_id} にTodoを送信しました")
     except Exception as e:
-        print(f"Todo送信エラー (ユーザー {user_id}): {e}")
+        logger.error(f"Todo送信エラー (ユーザー {user_id}): {e}")
+
+async def check_user_sleep_status(user_id: str):
+    try:
+        # ギルドを取得
+        guild = bot.get_guild(GUILD_ID)
+        if not guild:
+            logger.warning("❌ ギルドが取得できません。GUILD_IDが正しいか確認してね")
+            return
+
+        # メンバー情報を取得
+        member = guild.get_member(int(user_id))
+        if member is None:
+            logger.warning(f"⚠️ ユーザー {user_id} はこのサーバーにいないよ")
+            return
+
+        # ステータスがオンラインのときだけ通知
+        if member.status == discord.Status.online:
+            message_text = "もうこんな時間だよ〜！はやくねたほうがいいよー💤"
+            user = await bot.fetch_user(int(user_id))
+            await user.send(message_text)  # DMで送信
+
+            now = datetime.datetime.now(JST)
+            if user_id not in conversation_logs:
+                conversation_logs[user_id] = []
+            conversation_logs[user_id].append({
+                "role": "model",
+                "parts": [{"text": message_text}],
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")
+            })
+            conversation_logs[user_id] = conversation_logs[user_id][-7:]
+            save_conversation_logs(conversation_logs)
+
+            logger.info(f"✅ {user_id} に夜ふかし通知をDMで送信しました")
+        else:
+            logger.info(f"🛌 ユーザー {user_id} はオンラインではありません（status: {member.status}）")
+
+    except Exception as e:
+        logger.error(f"⚠️ {user_id} への睡眠チェック中にエラー: {e}")
+
+# twitter_thread = threading.Thread(target=start_twitter_bot)
+# twitter_thread.start()
 
 bot.run(TOKEN)
