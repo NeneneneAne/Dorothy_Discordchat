@@ -682,9 +682,6 @@ async def on_message(message):
         except Exception as e:
             logger.error(f"❌ メッセージ送信エラー: {e}")
 
-        # メンションされたチャンネルに返信
-        await message.channel.send(f"{message.author.mention} {response}")
-
     # --- DMでの会話（従来通り） ---
     elif message.guild is None:
         image_bytes = None
