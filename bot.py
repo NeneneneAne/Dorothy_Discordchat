@@ -425,7 +425,7 @@ async def remove_notification(interaction: discord.Interaction, index: int):
         ephemeral=True
     )
 
-async def send_notificati(user_id, info):
+async def send_notification_message(user_id, info):
     try:
         user = await bot.fetch_user(int(user_id))
         if user:
