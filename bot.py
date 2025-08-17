@@ -368,7 +368,7 @@ async def set_notification_after(interaction: discord.Interaction, hours: int, m
 
     # 通知ジョブを追加（即時スケジューリング）
     scheduler.add_job(
-        send_notificati,
+        send_notification_message,
         'date',
         run_date=future_time,
         args=[user_id, info],
