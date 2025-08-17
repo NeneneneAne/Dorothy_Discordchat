@@ -368,7 +368,7 @@ async def set_notification_after(interaction: discord.Interaction, hours: int, m
 
     # 通知ジョブを追加（即時スケジューリング）
     scheduler.add_job(
-        send_notification_message,
+        send_notificati,
         'date',
         run_date=future_time,
         args=[user_id, info],
@@ -425,7 +425,7 @@ async def remove_notification(interaction: discord.Interaction, index: int):
         ephemeral=True
     )
 
-async def send_notification_message(user_id, info):
+async def send_notificati(user_id, info):
     try:
         user = await bot.fetch_user(int(user_id))
         if user:
@@ -650,12 +650,16 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    logger.info(f"📩 受信: guild={message.guild.id if message.guild else 'DM'} "
+                f"author={message.author} content={message.content}")
+
     # --- サーバー内でメンションされたとき ---
     if (
         message.guild
         and message.guild.id in GUILD_IDS
         and bot.user.mentioned_in(message)
     ):
+        logger.info("✅ メンションを検知！処理開始")
         image_bytes = None
         image_mime_type = "image/png"
 
