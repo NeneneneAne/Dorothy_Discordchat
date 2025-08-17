@@ -657,9 +657,9 @@ async def on_message(message):
     if (
         message.guild
         and message.guild.id in GUILD_IDS
-        and bot.user.mentioned_in(message)
+        and (bot.user.mentioned_in(message) or message.role_mentions)
     ):
-        logger.info("✅ メンションを検知！処理開始")
+        
         image_bytes = None
         image_mime_type = "image/png"
 
@@ -670,12 +670,17 @@ async def on_message(message):
                 image_bytes = await attachment.read()
                 image_mime_type = attachment.content_type
 
-        if image_bytes:
-            response = await get_gemini_response_with_image(
-                str(message.author.id), message.content, image_bytes, image_mime_type
-            )
-        else:
-            response = await get_gemini_response(str(message.author.id), message.content)
+        try:
+            if image_bytes:
+                response = await get_gemini_response_with_image(
+                    str(message.author.id), message.content, image_bytes, image_mime_type
+                )
+            else:
+                response = await get_gemini_response(str(message.author.id), message.content)
+
+            await message.channel.send(f"{message.author.mention} {response}")
+        except Exception as e:
+            logger.error(f"❌ メッセージ送信エラー: {e}")
 
         # メンションされたチャンネルに返信
         await message.channel.send(f"{message.author.mention} {response}")
