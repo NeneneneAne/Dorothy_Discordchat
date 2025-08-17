@@ -48,6 +48,7 @@ DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
 JST = pytz.timezone("Asia/Tokyo")
+GUILD_IDS = [int(x) for x in os.getenv("GUILD_IDS", "").split(",") if x.strip()]
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -649,7 +650,34 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    if message.guild is None:
+    # --- サーバー内でメンションされたとき ---
+    if (
+        message.guild
+        and message.guild.id in GUILD_IDS
+        and bot.user.mentioned_in(message)
+    ):
+        image_bytes = None
+        image_mime_type = "image/png"
+
+        # 添付画像がある場合
+        if message.attachments:
+            attachment = message.attachments[0]
+            if attachment.content_type and attachment.content_type.startswith("image/"):
+                image_bytes = await attachment.read()
+                image_mime_type = attachment.content_type
+
+        if image_bytes:
+            response = await get_gemini_response_with_image(
+                str(message.author.id), message.content, image_bytes, image_mime_type
+            )
+        else:
+            response = await get_gemini_response(str(message.author.id), message.content)
+
+        # メンションされたチャンネルに返信
+        await message.channel.send(f"{message.author.mention} {response}")
+
+    # --- DMでの会話（従来通り） ---
+    elif message.guild is None:
         image_bytes = None
         image_mime_type = "image/png"
 
@@ -660,13 +688,15 @@ async def on_message(message):
                 image_mime_type = attachment.content_type
 
         if image_bytes:
-            response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
+            response = await get_gemini_response_with_image(
+                str(message.author.id), message.content, image_bytes, image_mime_type
+            )
             conversation_logs[str(message.author.id)] = []
         else:
             response = await get_gemini_response(str(message.author.id), message.content)
 
         await message.channel.send(response)
-        
+
     await bot.process_commands(message)
 
 # 通知スケジューリング
