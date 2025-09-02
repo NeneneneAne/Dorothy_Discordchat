@@ -795,17 +795,6 @@ async def get_gemini_response_line(user_id, user_input):
         else:
             return f"⚠️ エラー: {response.status}"
 
-# ==== LINE Webhookエンドポイント ====
-@app.route("/callback", methods=["POST"])
-def callback():
-    signature = request.headers.get("X-Line-Signature")
-    body = request.get_data(as_text=True)
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return "OK"
-
 # ==== LINEメッセージ受信処理 ====
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
