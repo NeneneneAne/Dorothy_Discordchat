@@ -60,13 +60,16 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # LINE Webhookエンドポイント
 @app.route("/callback", methods=["POST"])
-def callback():
+async def callback():
     signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
     try:
-        handler.handle(body, signature)
+        await handler.handle_async(body, signature)  # 非同期で処理
     except InvalidSignatureError:
         abort(400)
+    except Exception as e:
+        app.logger.error(f"Exception in callback: {e}")
+        abort(500)
     return "OK"
 
 SUPABASE_HEADERS = {
@@ -763,11 +766,9 @@ async def get_gemini_response_line(user_id, user_input):
     if user_id not in conversation_logs_line:
         conversation_logs_line[user_id] = []
 
-    # ユーザー発言を追加
     conversation_logs_line[user_id].append({"role": "user", "parts": [{"text": user_input}]})
     conversation_logs_line[user_id] = conversation_logs_line[user_id][-10:]
 
-    # キャラ設定を含めたリクエスト
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     messages.extend(conversation_logs_line[user_id])
 
@@ -786,7 +787,6 @@ async def get_gemini_response_line(user_id, user_input):
                 .get("text", "エラー: 応答が取得できませんでした。")
             )
 
-            # AI応答を保存
             conversation_logs_line[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
             conversation_logs_line[user_id] = conversation_logs_line[user_id][-10:]
             save_line_conversation_logs(conversation_logs_line)
@@ -797,11 +797,16 @@ async def get_gemini_response_line(user_id, user_input):
 
 # ==== LINEメッセージ受信処理 ====
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
+async def handle_message(event):
     user_id = event.source.user_id
     user_input = event.message.text
-    response = asyncio.run(get_gemini_response_line(user_id, user_input))
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+
+    response = await get_gemini_response_line(user_id, user_input)
+
+    await line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=response)
+    )
 
 # 通知スケジューリング
 def schedule_notifications():
