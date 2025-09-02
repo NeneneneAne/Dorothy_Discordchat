@@ -6,5 +6,4 @@ requests
 aiohttp
 soundfile
 tweepy
-line-bot-sdk
 openai
