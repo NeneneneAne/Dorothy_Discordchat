@@ -69,6 +69,7 @@ def callback():  # asyncを削除
         abort(400)
     except Exception as e:
         app.logger.error(f"Exception in callback: {e}")
+        # 追加: ここで 500 エラーを返す
         abort(500)
     return "OK"
 
@@ -800,13 +801,14 @@ async def get_gemini_response_line(user_id, user_input):
 def handle_message(event): # asyncを削除
     user_id = event.source.user_id
     user_input = event.message.text
-    # ここはGeminiの非同期処理なので、asyncio.run()で実行
+    # 非同期関数を同期的に実行
     response = asyncio.run(get_gemini_response_line(user_id, user_input))
 
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=response)
     )
+
 # 通知スケジューリング
 def schedule_notifications():
     # 通知関連のジョブのみを削除（job_idにnotificationが含まれるもの）
