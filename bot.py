@@ -17,6 +17,9 @@ from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from collections import deque  # メッセージ履歴の管理に使用
 from dotenv import load_dotenv
+from linebot import LineBotApi, WebhookHandler
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.exceptions import InvalidSignatureError
 
 session = None 
 
@@ -44,11 +47,26 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GUILD_ID = int(os.getenv("GUILD_ID")) 
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 DATA_FILE = "notifications.json"
 DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
 JST = pytz.timezone("Asia/Tokyo")
 GUILD_IDS = [int(x) for x in os.getenv("GUILD_IDS", "").split(",") if x.strip()]
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+# LINE Webhookエンドポイント
+@app.route("/callback", methods=["POST"])
+def callback():
+    signature = request.headers.get("X-Line-Signature")
+    body = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return "OK"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -58,6 +76,9 @@ SUPABASE_HEADERS = {
 
 # メッセージ履歴を管理（最大5件）
 conversation_logs = {}
+
+# LINE用の会話履歴
+conversation_logs_line = load_line_conversation_logs()
 
  # user_idごとの時間設定 {"hour": int, "minute": int}
 sleep_check_times = {}
@@ -94,6 +115,36 @@ def save_sleep_check_times(data):
             "minute": time_data["minute"]
         }
         requests.post(f"{SUPABASE_URL}/rest/v1/sleep_check_times", headers=SUPABASE_HEADERS, json=[insert_data])
+
+def load_line_conversation_logs():
+    url = f"{SUPABASE_URL}/rest/v1/line_conversation_logs?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        data = response.json()
+        logs = {}
+        for item in data:
+            logs.setdefault(item["user_id"], []).append({
+                "role": item["role"],
+                "parts": [{"text": item["content"]}]
+            })
+        return logs
+    return {}
+
+def save_line_conversation_logs(logs):
+    for user_id, messages in logs.items():
+        # まず削除
+        url = f"{SUPABASE_URL}/rest/v1/line_conversation_logs?user_id=eq.{user_id}"
+        requests.delete(url, headers=SUPABASE_HEADERS)
+
+        insert_data = []
+        for m in messages:
+            insert_data.append({
+                "user_id": user_id,
+                "role": m["role"],
+                "content": m["parts"][0]["text"]
+            })
+        if insert_data:
+            requests.post(f"{SUPABASE_URL}/rest/v1/line_conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
 
 # 会話ログの読み書き
 def load_conversation_logs():
@@ -704,6 +755,63 @@ async def on_message(message):
         await message.channel.send(response)
 
     await bot.process_commands(message)
+
+# ==== LINE用Gemini応答 ====
+async def get_gemini_response_line(user_id, user_input):
+    global session
+    if user_id not in conversation_logs_line:
+        conversation_logs_line[user_id] = []
+
+    # ユーザー発言を追加
+    conversation_logs_line[user_id].append({"role": "user", "parts": [{"text": user_input}]})
+    conversation_logs_line[user_id] = conversation_logs_line[user_id][-10:]
+
+    # キャラ設定を含めたリクエスト
+    messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
+    messages.extend(conversation_logs_line[user_id])
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    headers = {"Content-Type": "application/json"}
+    params = {"key": GEMINI_API_KEY}
+    data = {"contents": messages}
+
+    async with session.post(url, headers=headers, params=params, json=data) as response:
+        if response.status == 200:
+            response_json = await response.json()
+            reply_text = (
+                response_json.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "エラー: 応答が取得できませんでした。")
+            )
+
+            # AI応答を保存
+            conversation_logs_line[user_id].append({"role": "model", "parts": [{"text": reply_text}]})
+            conversation_logs_line[user_id] = conversation_logs_line[user_id][-10:]
+            save_line_conversation_logs(conversation_logs_line)
+
+            return reply_text.strip()
+        else:
+            return f"⚠️ エラー: {response.status}"
+
+# ==== LINE Webhookエンドポイント ====
+@app.route("/callback", methods=["POST"])
+def callback():
+    signature = request.headers.get("X-Line-Signature")
+    body = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return "OK"
+
+# ==== LINEメッセージ受信処理 ====
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_id = event.source.user_id
+    user_input = event.message.text
+    response = asyncio.run(get_gemini_response_line(user_id, user_input))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
 
 # 通知スケジューリング
 def schedule_notifications():
