@@ -60,11 +60,11 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # LINE Webhookエンドポイント
 @app.route("/callback", methods=["POST"])
-async def callback():
+def callback():  # asyncを削除
     signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
     try:
-        await handler.handle_async(body, signature)  # 非同期で処理
+        handler.handle(body, signature)  # awaitを削除し、handleを呼び出す
     except InvalidSignatureError:
         abort(400)
     except Exception as e:
@@ -797,17 +797,16 @@ async def get_gemini_response_line(user_id, user_input):
 
 # ==== LINEメッセージ受信処理 ====
 @handler.add(MessageEvent, message=TextMessage)
-async def handle_message(event):
+def handle_message(event): # asyncを削除
     user_id = event.source.user_id
     user_input = event.message.text
+    # ここはGeminiの非同期処理なので、asyncio.run()で実行
+    response = asyncio.run(get_gemini_response_line(user_id, user_input))
 
-    response = await get_gemini_response_line(user_id, user_input)
-
-    await line_bot_api.reply_message(
+    line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=response)
     )
-
 # 通知スケジューリング
 def schedule_notifications():
     # 通知関連のジョブのみを削除（job_idにnotificationが含まれるもの）
