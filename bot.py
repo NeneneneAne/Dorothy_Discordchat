@@ -78,9 +78,6 @@ SUPABASE_HEADERS = {
 # メッセージ履歴を管理（最大5件）
 conversation_logs = {}
 
-# LINE用の会話履歴
-conversation_logs_line = load_line_conversation_logs()
-
  # user_idごとの時間設定 {"hour": int, "minute": int}
 sleep_check_times = {}
 
@@ -146,6 +143,9 @@ def save_line_conversation_logs(logs):
             })
         if insert_data:
             requests.post(f"{SUPABASE_URL}/rest/v1/line_conversation_logs", headers=SUPABASE_HEADERS, json=insert_data)
+
+# LINE用の会話履歴
+conversation_logs_line = load_line_conversation_logs()
 
 # 会話ログの読み書き
 def load_conversation_logs():
