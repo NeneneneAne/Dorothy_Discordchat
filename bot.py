@@ -10,6 +10,7 @@ import asyncio
 import logging
 import tweepy
 from flask import Flask
+from flask import request, abort
 import threading
 import os
 from discord import app_commands
