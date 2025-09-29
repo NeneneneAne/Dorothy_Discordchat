@@ -74,6 +74,22 @@ scheduler = AsyncIOScheduler(timezone=JST)
 
 logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
 
+# --- ランダム会話ターゲット管理 ---
+def load_chat_targets():
+    url = f"{SUPABASE_URL}/rest/v1/chat_targets?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    if response.status_code == 200:
+        return [str(row["user_id"]) for row in response.json()]
+    return []
+
+def save_chat_targets(targets):
+    requests.delete(f"{SUPABASE_URL}/rest/v1/chat_targets", headers=SUPABASE_HEADERS)
+    insert_data = [{"user_id": uid} for uid in targets]
+    if insert_data:
+        requests.post(f"{SUPABASE_URL}/rest/v1/chat_targets", headers=SUPABASE_HEADERS, json=insert_data)
+
+chat_targets = load_chat_targets()
+
 def load_sleep_check_times():
     url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?select=*"
     response = requests.get(url, headers=SUPABASE_HEADERS)
@@ -822,6 +838,95 @@ async def check_user_sleep_status(user_id: str):
 
     except Exception as e:
         logger.error(f"⚠️ {user_id} への睡眠チェック中にエラー: {e}")
+
+@bot.tree.command(name="add_chat_target", description="ランダム会話の対象に登録するよ！")
+async def add_chat_target(interaction: discord.Interaction, user: discord.User):
+    global chat_targets
+    uid = str(user.id)
+    if uid not in chat_targets:
+        chat_targets.append(uid)
+        save_chat_targets(chat_targets)
+        await interaction.response.send_message(f"✅ {user.name} を会話対象に追加したよ！", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"ℹ️ {user.name} はすでに登録されてるよ！", ephemeral=True)
+
+@bot.tree.command(name="remove_chat_target", description="ランダム会話の対象から削除するよ！")
+async def remove_chat_target(interaction: discord.Interaction, user: discord.User):
+    global chat_targets
+    uid = str(user.id)
+    if uid in chat_targets:
+        chat_targets.remove(uid)
+        save_chat_targets(chat_targets)
+        await interaction.response.send_message(f"✅ {user.name} を会話対象から外したよ！", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"ℹ️ {user.name} は登録されてないよ！", ephemeral=True)
+
+@bot.tree.command(name="list_chat_targets", description="ランダム会話の対象ユーザーを表示するよ！")
+async def list_chat_targets(interaction: discord.Interaction):
+    if not chat_targets:
+        await interaction.response.send_message("📭 登録されてる対象はいないよ～", ephemeral=True)
+        return
+    names = []
+    for uid in chat_targets:
+        try:
+            user = await bot.fetch_user(int(uid))
+            names.append(user.name)
+        except:
+            names.append(f"(ID: {uid})")
+    await interaction.response.send_message("🎯 ランダム会話対象:\n" + "\n".join(names), ephemeral=True)
+
+# --- ランダム会話 ---
+async def send_random_chat():
+    try:
+        if not chat_targets:
+            logger.info("📭 ランダム会話の対象がいないのでスキップ")
+            return
+
+        user_id = random.choice(chat_targets)
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            logger.warning(f"⚠️ ユーザー {user_id} が見つからないよ")
+            return
+
+        # Geminiに「短い会話のきっかけ」を作らせる
+        prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
+        message = await get_gemini_response(user_id, prompt)
+
+        await user.send(message)
+        logger.info(f"✅ ランダム会話を {user.name} に送信: {message}")
+
+    except Exception as e:
+        logger.error(f"ランダム会話送信エラー: {e}")
+
+def schedule_random_chats():
+    """1日1～2回ランダムな時間に会話を送るジョブをスケジュール"""
+    for job in scheduler.get_jobs():
+        if job.id.startswith("random_chat_"):
+            scheduler.remove_job(job.id)
+
+    times_per_day = random.choice([1, 2])
+    for i in range(times_per_day):
+        hour = random.randint(9, 22)
+        minute = random.randint(0, 59)
+
+        scheduler.add_job(
+            send_random_chat,
+            'cron',
+            hour=hour,
+            minute=minute,
+            id=f"random_chat_{i}",
+            timezone=JST
+        )
+
+    scheduler.add_job(
+        schedule_random_chats,
+        'cron',
+        hour=0,
+        minute=0,
+        id="reset_random_chats",
+        timezone=JST
+    )
+    logger.info("🌟 ランダム会話ジョブを設定しました")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
