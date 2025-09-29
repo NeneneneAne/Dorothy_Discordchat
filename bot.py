@@ -315,7 +315,8 @@ async def on_ready():
         setup_periodic_reload()
         schedule_notifications()
         schedule_daily_todos()
-        schedule_sleep_check()  # ← 関数名を修正（sなし）
+        schedule_sleep_check() 
+        schedule_random_chats()
 
         logger.error("スケジュールを設定しました。")
         logger.error("🗓️ sleep_check_times:", sleep_check_times)
