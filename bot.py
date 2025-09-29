@@ -877,6 +877,33 @@ async def list_chat_targets(interaction: discord.Interaction):
             names.append(f"(ID: {uid})")
     await interaction.response.send_message("🎯 ランダム会話対象:\n" + "\n".join(names), ephemeral=True)
 
+@bot.tree.command(name="test_random_chat", description="ランダム会話送信を今すぐテストするよ！")
+async def test_random_chat(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        if not chat_targets:
+            await interaction.followup.send("📭 ランダム会話の対象がいないよ～！", ephemeral=True)
+            return
+
+        user_id = random.choice(chat_targets)
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            await interaction.followup.send(f"⚠️ ユーザー {user_id} が見つからなかったよ！", ephemeral=True)
+            return
+
+        prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
+        message = await get_gemini_response(user_id, prompt)
+
+        await user.send(message)
+        await interaction.followup.send(f"✅ {user.name} にテストメッセージを送ったよ！", ephemeral=True)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ DMが拒否されてるみたい。送れなかったよ！", ephemeral=True)
+        # リストから外す処理を入れてもOK
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ エラーが起きたよ: {e}", ephemeral=True)
+
 # --- ランダム会話 ---
 async def send_random_chat():
     try:
