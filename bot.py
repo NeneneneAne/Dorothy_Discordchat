@@ -928,25 +928,38 @@ async def send_random_chat():
         logger.error(f"ランダム会話送信エラー: {e}")
 
 def schedule_random_chats():
-    """1日1～2回ランダムな時間に会話を送るジョブをスケジュール"""
+    """午前と午後にランダム会話を送るジョブをスケジュール"""
     for job in scheduler.get_jobs():
         if job.id.startswith("random_chat_"):
             scheduler.remove_job(job.id)
 
-    times_per_day = random.choice([1, 2])
-    for i in range(times_per_day):
-        hour = random.randint(9, 22)
-        minute = random.randint(0, 59)
+    # 午前（9時〜12時）に必ず1回
+    hour = random.randint(9, 11)   # 9, 10, 11時
+    minute = random.randint(0, 59)
+    scheduler.add_job(
+        send_random_chat,
+        'cron',
+        hour=hour,
+        minute=minute,
+        id="random_chat_morning",
+        timezone=JST
+    )
+    logger.info(f"🌟 午前のランダム会話を {hour:02d}:{minute:02d} に設定しました")
 
-        scheduler.add_job(
-            send_random_chat,
-            'cron',
-            hour=hour,
-            minute=minute,
-            id=f"random_chat_{i}",
-            timezone=JST
-        )
+    # 午後（13時〜22時）にもう1回
+    hour = random.randint(13, 21)  # 13〜21時
+    minute = random.randint(0, 59)
+    scheduler.add_job(
+        send_random_chat,
+        'cron',
+        hour=hour,
+        minute=minute,
+        id="random_chat_afternoon",
+        timezone=JST
+    )
+    logger.info(f"🌟 午後のランダム会話を {hour:02d}:{minute:02d} に設定しました")
 
+    # 翌日0時に再スケジュール
     scheduler.add_job(
         schedule_random_chats,
         'cron',
@@ -955,7 +968,7 @@ def schedule_random_chats():
         id="reset_random_chats",
         timezone=JST
     )
-    logger.info("🌟 ランダム会話ジョブを設定しました")
+    logger.info("🌟 ランダム会話ジョブを再設定しました")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
