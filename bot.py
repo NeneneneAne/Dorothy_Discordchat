@@ -308,7 +308,7 @@ async def on_ready():
         # データを再読み込み
         global daily_notifications
         daily_notifications = load_daily_notifications()
-        sleep_check_times = load_sleep_check_times()  # ← この行を追加
+        sleep_check_times = load_sleep_check_times() 
 
         # すべてのジョブをクリアして再設定
         scheduler.remove_all_jobs()
@@ -335,6 +335,7 @@ async def on_resumed():
     schedule_notifications()
     schedule_daily_todos()
     schedule_sleep_check()
+    schedule_random_chats()
     
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
@@ -723,9 +724,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# 通知スケジューリング
 def schedule_notifications():
-    # 通知関連のジョブのみを削除（job_idにnotificationが含まれるもの）
     for job in scheduler.get_jobs():
         if "notification_" in job.id:
             scheduler.remove_job(job.id)
@@ -743,7 +742,7 @@ def schedule_notifications():
                     'date', 
                     run_date=notification_time, 
                     args=[user_id, info],
-                    id=f"notification_{user_id}_{i}"  # 一意のIDを設定
+                    id=f"notification_{user_id}_{i}" 
                 )
             except ValueError:
                 pass
@@ -761,9 +760,9 @@ def schedule_daily_todos():
             hour=hour,
             minute=minute,
             args=[int(user_id)],
-            id=job_id,  # ジョブIDが被ると追加できないので
-            replace_existing=True,  # ← これを追加！
-            timezone=JST  # タイムゾーンを明示的に指定
+            id=job_id, 
+            replace_existing=True, 
+            timezone=JST 
         )
         logger.error(f"ユーザー {user_id} のTodo通知を {hour}:{minute} (JST) に設定しました")
 
@@ -782,12 +781,12 @@ async def reload_all_data():
     notifications = load_notifications()
     daily_notifications = load_daily_notifications()
     conversation_logs = load_conversation_logs()
-    sleep_check_times = load_sleep_check_times()  # ← この行を追加
+    sleep_check_times = load_sleep_check_times() 
     
     # スケジュールも再設定
     schedule_notifications()
     schedule_daily_todos()
-    schedule_sleep_check()  # ← この行を追加
+    schedule_sleep_check() 
     logger.error("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
@@ -805,23 +804,21 @@ async def send_user_todo(user_id: int):
 
 async def check_user_sleep_status(user_id: str):
     try:
-        # ギルドを取得
+
         guild = bot.get_guild(GUILD_ID)
         if not guild:
             logger.warning("❌ ギルドが取得できません。GUILD_IDが正しいか確認してね")
             return
 
-        # メンバー情報を取得
         member = guild.get_member(int(user_id))
         if member is None:
             logger.warning(f"⚠️ ユーザー {user_id} はこのサーバーにいないよ")
             return
 
-        # ステータスがオンラインのときだけ通知
         if member.status == discord.Status.online:
             message_text = "もうこんな時間だよ〜！はやくねたほうがいいよー💤"
             user = await bot.fetch_user(int(user_id))
-            await user.send(message_text)  # DMで送信
+            await user.send(message_text)  
 
             now = datetime.datetime.now(JST)
             if user_id not in conversation_logs:
@@ -900,7 +897,7 @@ async def test_random_chat(interaction: discord.Interaction):
 
     except discord.Forbidden:
         await interaction.followup.send("❌ DMが拒否されてるみたい。送れなかったよ！", ephemeral=True)
-        # リストから外す処理を入れてもOK
+
     except Exception as e:
         await interaction.followup.send(f"⚠️ エラーが起きたよ: {e}", ephemeral=True)
 
@@ -917,7 +914,6 @@ async def send_random_chat():
             logger.warning(f"⚠️ ユーザー {user_id} が見つからないよ")
             return
 
-        # Geminiに「短い会話のきっかけ」を作らせる
         prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
         message = await get_gemini_response(user_id, prompt)
 
@@ -929,12 +925,16 @@ async def send_random_chat():
 
 def schedule_random_chats():
     """午前と午後にランダム会話を送るジョブをスケジュール"""
+    logger.info("🔁 schedule_random_chats が呼ばれました。既存の random_chat_* ジョブを整理します...")
+
     for job in scheduler.get_jobs():
         if job.id.startswith("random_chat_"):
-            scheduler.remove_job(job.id)
+            try:
+                scheduler.remove_job(job.id)
+            except Exception:
+                pass
 
-    # 午前（9時〜12時）に必ず1回
-    hour = random.randint(9, 11)   # 9, 10, 11時
+    hour = random.randint(9, 11)
     minute = random.randint(0, 59)
     scheduler.add_job(
         send_random_chat,
@@ -942,12 +942,12 @@ def schedule_random_chats():
         hour=hour,
         minute=minute,
         id="random_chat_morning",
-        timezone=JST
+        timezone=JST,
+        replace_existing=True
     )
     logger.info(f"🌟 午前のランダム会話を {hour:02d}:{minute:02d} に設定しました")
 
-    # 午後（13時〜22時）にもう1回
-    hour = random.randint(13, 21)  # 13〜21時
+    hour = random.randint(13, 21)
     minute = random.randint(0, 59)
     scheduler.add_job(
         send_random_chat,
@@ -955,20 +955,21 @@ def schedule_random_chats():
         hour=hour,
         minute=minute,
         id="random_chat_afternoon",
-        timezone=JST
+        timezone=JST,
+        replace_existing=True
     )
     logger.info(f"🌟 午後のランダム会話を {hour:02d}:{minute:02d} に設定しました")
 
-    # 翌日0時に再スケジュール
     scheduler.add_job(
         schedule_random_chats,
         'cron',
         hour=0,
         minute=0,
         id="reset_random_chats",
-        timezone=JST
+        timezone=JST,
+        replace_existing=True
     )
-    logger.info("🌟 ランダム会話ジョブを再設定しました")
+    logger.info("🌟 ランダム会話ジョブを再設定しました（reset_random_chats 登録完了）")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
