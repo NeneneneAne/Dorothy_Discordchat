@@ -902,6 +902,28 @@ async def test_random_chat(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"⚠️ エラーが起きたよ: {e}", ephemeral=True)
 
+async def send_random_chat():
+    try:
+        if not chat_targets:
+            logger.info("📭 ランダム会話の対象がいないのでスキップ")
+            return
+
+        user_id = random.choice(chat_targets)
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            logger.warning(f"⚠️ ユーザー {user_id} が見つからないよ")
+            return
+
+        # Geminiに「短い会話のきっかけ」を作らせる
+        prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
+        message = await get_gemini_response(user_id, prompt)
+
+        await user.send(message)
+        logger.info(f"✅ ランダム会話を {user.name} に送信: {message}")
+
+    except Exception as e:
+        logger.error(f"ランダム会話送信エラー: {e}")
+
 def schedule_random_chats():
     logger.info("🔁 schedule_random_chats が呼ばれました。")
 
