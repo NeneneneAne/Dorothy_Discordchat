@@ -925,52 +925,35 @@ async def send_random_chat():
         logger.error(f"ランダム会話送信エラー: {e}")
 
 def schedule_random_chats():
-    """午前と午後にランダム会話を送るジョブをスケジュール"""
-    logger.info("🔁 schedule_random_chats が呼ばれました。既存の random_chat_* ジョブを整理します...")
+    logger.info("🔁 schedule_random_chats が呼ばれました。")
 
-    for job in scheduler.get_jobs():
-        if job.id.startswith("random_chat_"):
-            try:
-                scheduler.remove_job(job.id)
-            except Exception:
-                pass
+    now = datetime.now().time()
 
-    hour = random.randint(9, 11)
-    minute = random.randint(0, 59)
-    scheduler.add_job(
-        send_random_chat,
-        'cron',
-        hour=hour,
-        minute=minute,
-        id="random_chat_morning",
-        timezone=JST,
-        replace_existing=True
-    )
-    logger.info(f"🌟 午前のランダム会話を {hour:02d}:{minute:02d} に設定しました")
+    # 既存の午前/午後ジョブがあるか確認
+    jobs = {job.id for job in scheduler.get_jobs()}
 
-    hour = random.randint(13, 21)
-    minute = random.randint(0, 59)
-    scheduler.add_job(
-        send_random_chat,
-        'cron',
-        hour=hour,
-        minute=minute,
-        id="random_chat_afternoon",
-        timezone=JST,
-        replace_existing=True
-    )
-    logger.info(f"🌟 午後のランダム会話を {hour:02d}:{minute:02d} に設定しました")
+    # 午前（9〜12時） → まだ午前ジョブがなければ追加
+    if "random_chat_morning" not in jobs and now < time(12, 0):
+        hour = random.randint(9, 11)
+        minute = random.randint(0, 59)
+        scheduler.add_job(send_random_chat, "cron", hour=hour, minute=minute, id="random_chat_morning")
+        logger.info(f"🌟 午前のランダム会話を {hour}:{minute:02d} に設定しました")
+    else:
+        logger.info("⏩ 午前ジョブは既に存在するか時間外なのでスキップ")
 
-    scheduler.add_job(
-        schedule_random_chats,
-        'cron',
-        hour=0,
-        minute=0,
-        id="reset_random_chats",
-        timezone=JST,
-        replace_existing=True
-    )
-    logger.info("🌟 ランダム会話ジョブを再設定しました（reset_random_chats 登録完了）")
+    # 午後（13〜22時） → まだ午後ジョブがなければ追加
+    if "random_chat_afternoon" not in jobs and now < time(22, 0):
+        hour = random.randint(13, 21)
+        minute = random.randint(0, 59)
+        scheduler.add_job(send_random_chat, "cron", hour=hour, minute=minute, id="random_chat_afternoon")
+        logger.info(f"🌟 午後のランダム会話を {hour}:{minute:02d} に設定しました")
+    else:
+        logger.info("⏩ 午後ジョブは既に存在するか時間外なのでスキップ")
+
+    # 翌日0時に再設定するジョブを必ず入れる
+    if "reset_random_chats" not in jobs:
+        scheduler.add_job(schedule_random_chats, "cron", hour=0, minute=0, id="reset_random_chats")
+        logger.info("🌟 reset_random_chats を登録しました")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
