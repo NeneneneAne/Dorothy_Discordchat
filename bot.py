@@ -930,30 +930,23 @@ def schedule_random_chats():
     now = datetime.datetime.now(JST)
     jobs = {job.id for job in scheduler.get_jobs()}
 
-    # 午前（9〜12時のランダム1回）
+    # 午前（9〜11時のランダム1回）
     if "random_chat_morning" not in jobs:
         hour = random.randint(9, 11)
         minute = random.randint(0, 59)
         run_time = datetime.datetime(now.year, now.month, now.day, hour, minute, tzinfo=JST)
-
-        # すでに午前を過ぎていたら翌日に
-        if run_time <= now:
-            run_time += datetime.timedelta(days=1)
 
         scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_morning")
         logger.info(f"🌟 午前のランダム会話を {run_time} に設定しました")
     else:
         logger.info("⏩ 午前ジョブは既に存在するのでスキップ")
 
-    # 午後（13〜22時のランダム、確率付き）
+    # 午後（13〜21時のランダム、確率付き）
     if "random_chat_afternoon" not in jobs:
         if random.random() < 0.5:  # ← 確率で実行するならここ調整
             hour = random.randint(13, 21)
             minute = random.randint(0, 59)
             run_time = datetime.datetime(now.year, now.month, now.day, hour, minute, tzinfo=JST)
-
-            if run_time <= now:
-                run_time += datetime.timedelta(days=1)
 
             scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_afternoon")
             logger.info(f"🌟 午後のランダム会話を {run_time} に設定しました")
