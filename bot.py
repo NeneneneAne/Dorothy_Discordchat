@@ -787,6 +787,7 @@ async def reload_all_data():
     schedule_notifications()
     schedule_daily_todos()
     schedule_sleep_check() 
+    schedule_random_chats()
     logger.error("データの再読み込みが完了しました")
 
 async def send_user_todo(user_id: int):
