@@ -925,34 +925,87 @@ async def send_random_chat():
         logger.error(f"ランダム会話送信エラー: {e}")
 
 def schedule_random_chats():
+    """
+    - 午前: 9:00-11:59 の範囲で必ず1回（今日の午前がまだ残っていれば今日、過ぎていれば翌日）
+    - 午後: 13:00-21:59 の範囲で、環境変数 AFTERNOON_PROB (0.0-1.0, デフォルト0.5) の確率で1回だけスケジュール
+    - morning/afternoon は単発の 'date' ジョブとして登録（毎日リセットして別時刻にするため）
+    - 毎日 0:00 にこの関数を再実行する cron ジョブ reset_random_chats を登録（replace_existing=True）
+    """
     logger.info("🔁 schedule_random_chats が呼ばれました。")
 
-    now = datetime.datetime.now().time()  # ← 修正ポイント！
+    # 既存の当該ジョブを削除して重複を防ぐ（安全策）
+    for jid in ("random_chat_morning", "random_chat_afternoon"):
+        try:
+            scheduler.remove_job(jid)
+        except Exception:
+            pass
 
-    jobs = {job.id for job in scheduler.get_jobs()}
+    now = datetime.datetime.now(JST)
 
-    # 午前（9〜12時）
-    if "random_chat_morning" not in jobs and now < datetime.time(12, 0):
-        hour = random.randint(9, 11)
-        minute = random.randint(0, 59)
-        scheduler.add_job(send_random_chat, "cron", hour=hour, minute=minute, id="random_chat_morning")
-        logger.info(f"🌟 午前のランダム会話を {hour}:{minute:02d} に設定しました")
+    def pick_random_datetime_between(start_dt, end_dt):
+        """start_dt, end_dt は timezone-aware datetime。秒単位でランダムに返す。"""
+        delta = int((end_dt - start_dt).total_seconds())
+        if delta < 0:
+            return None
+        offset = random.randint(0, delta)
+        return start_dt + datetime.timedelta(seconds=offset)
+
+    # --- 午前（必ず1回） ---
+    if now.time() < datetime.time(12, 0):
+        # 今日の午前（ただし現在時刻より1分後以降）
+        earliest = max(now + datetime.timedelta(minutes=1),
+                       datetime.datetime(now.year, now.month, now.day, 9, 0, tzinfo=JST))
+        latest = datetime.datetime(now.year, now.month, now.day, 11, 59, 59, tzinfo=JST)
     else:
-        logger.info("⏩ 午前ジョブは既に存在するか時間外なのでスキップ")
+        # 今日の午前は過ぎている → 明日の午前に設定
+        tomorrow = now + datetime.timedelta(days=1)
+        earliest = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 9, 0, tzinfo=JST)
+        latest = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 11, 59, 59, tzinfo=JST)
 
-    # 午後（13〜22時）
-    if "random_chat_afternoon" not in jobs and now < datetime.time(22, 0):
-        hour = random.randint(13, 21)
-        minute = random.randint(0, 59)
-        scheduler.add_job(send_random_chat, "cron", hour=hour, minute=minute, id="random_chat_afternoon")
-        logger.info(f"🌟 午後のランダム会話を {hour}:{minute:02d} に設定しました")
+    m_dt = pick_random_datetime_between(earliest, latest)
+    if m_dt:
+        scheduler.add_job(send_random_chat, 'date', run_date=m_dt, id="random_chat_morning")
+        logger.info(f"🌟 午前のランダム会話を {m_dt.strftime('%Y-%m-%d %H:%M:%S%z')} に設定しました")
     else:
-        logger.info("⏩ 午後ジョブは既に存在するか時間外なのでスキップ")
+        logger.info("⏭️ 午前のスケジュールは設定できませんでした（時間外）")
 
-    # 翌日0時に再設定
-    if "reset_random_chats" not in jobs:
-        scheduler.add_job(schedule_random_chats, "cron", hour=0, minute=0, id="reset_random_chats")
-        logger.info("🌟 reset_random_chats を登録しました")
+    # --- 午後（確率でスケジュールする） ---
+    try:
+        afternoon_prob = float(os.getenv("AFTERNOON_PROB", "0.5"))
+    except Exception:
+        afternoon_prob = 0.5
+
+    if random.random() < afternoon_prob:
+        # スケジューリング日（今日 or 明日）
+        if now.time() < datetime.time(22, 0):
+            earliest = max(now + datetime.timedelta(minutes=1),
+                           datetime.datetime(now.year, now.month, now.day, 13, 0, tzinfo=JST))
+            latest = datetime.datetime(now.year, now.month, now.day, 21, 59, 59, tzinfo=JST)
+        else:
+            tomorrow = now + datetime.timedelta(days=1)
+            earliest = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 13, 0, tzinfo=JST)
+            latest = datetime.datetime(tomorrow.year, tomorrow.month, tomorrow.day, 21, 59, 59, tzinfo=JST)
+
+        a_dt = pick_random_datetime_between(earliest, latest)
+        if a_dt:
+            scheduler.add_job(send_random_chat, 'date', run_date=a_dt, id="random_chat_afternoon")
+            logger.info(f"🌟 午後のランダム会話を {a_dt.strftime('%Y-%m-%d %H:%M:%S%z')} に設定しました")
+        else:
+            logger.info("⏭️ 午後のスケジュールは設定できませんでした（時間外）")
+    else:
+        logger.info("⏭️ 本日は午後のランダム会話をスケジュールしません（確率判定）")
+
+    # --- 毎日0:00に再生成するジョブ（必ず登録、上書き） ---
+    scheduler.add_job(
+        schedule_random_chats,
+        'cron',
+        hour=0,
+        minute=0,
+        id="reset_random_chats",
+        timezone=JST,
+        replace_existing=True
+    )
+    logger.info("🌟 reset_random_chats を登録しました（毎日0:00に再設定）")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
