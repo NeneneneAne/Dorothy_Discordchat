@@ -902,38 +902,15 @@ async def test_random_chat(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"⚠️ エラーが起きたよ: {e}", ephemeral=True)
 
-# --- ランダム会話 ---
-async def send_random_chat():
-    try:
-        if not chat_targets:
-            logger.info("📭 ランダム会話の対象がいないのでスキップ")
-            return
-
-        user_id = random.choice(chat_targets)
-        user = await bot.fetch_user(int(user_id))
-        if not user:
-            logger.warning(f"⚠️ ユーザー {user_id} が見つからないよ")
-            return
-
-        prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
-        message = await get_gemini_response(user_id, prompt)
-
-        await user.send(message)
-        logger.info(f"✅ ランダム会話を {user.name} に送信: {message}")
-
-    except Exception as e:
-        logger.error(f"ランダム会話送信エラー: {e}")
-
 def schedule_random_chats():
     logger.info("🔁 schedule_random_chats が呼ばれました。")
 
-    now = datetime.now().time()
+    now = datetime.datetime.now().time()  # ← 修正ポイント！
 
-    # 既存の午前/午後ジョブがあるか確認
     jobs = {job.id for job in scheduler.get_jobs()}
 
-    # 午前（9〜12時） → まだ午前ジョブがなければ追加
-    if "random_chat_morning" not in jobs and now < time(12, 0):
+    # 午前（9〜12時）
+    if "random_chat_morning" not in jobs and now < datetime.time(12, 0):
         hour = random.randint(9, 11)
         minute = random.randint(0, 59)
         scheduler.add_job(send_random_chat, "cron", hour=hour, minute=minute, id="random_chat_morning")
@@ -941,8 +918,8 @@ def schedule_random_chats():
     else:
         logger.info("⏩ 午前ジョブは既に存在するか時間外なのでスキップ")
 
-    # 午後（13〜22時） → まだ午後ジョブがなければ追加
-    if "random_chat_afternoon" not in jobs and now < time(22, 0):
+    # 午後（13〜22時）
+    if "random_chat_afternoon" not in jobs and now < datetime.time(22, 0):
         hour = random.randint(13, 21)
         minute = random.randint(0, 59)
         scheduler.add_job(send_random_chat, "cron", hour=hour, minute=minute, id="random_chat_afternoon")
@@ -950,7 +927,7 @@ def schedule_random_chats():
     else:
         logger.info("⏩ 午後ジョブは既に存在するか時間外なのでスキップ")
 
-    # 翌日0時に再設定するジョブを必ず入れる
+    # 翌日0時に再設定
     if "reset_random_chats" not in jobs:
         scheduler.add_job(schedule_random_chats, "cron", hour=0, minute=0, id="reset_random_chats")
         logger.info("🌟 reset_random_chats を登録しました")
