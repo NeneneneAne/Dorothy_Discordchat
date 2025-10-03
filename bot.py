@@ -927,44 +927,22 @@ async def send_random_chat():
 def schedule_random_chats():
     logger.info("🔁 schedule_random_chats が呼ばれました。")
     now = datetime.datetime.now(JST)
-
     jobs = {job.id for job in scheduler.get_jobs()}
 
-    # 午前（9〜12時のランダム）
+    # 午前（10〜12時のランダム1回）
     if "random_chat_morning" not in jobs:
-        hour = random.randint(9, 11)
+        hour = random.randint(10, 11)   # 10時〜11時
         minute = random.randint(0, 59)
         run_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
-        # もし今日すでに過ぎてたら翌日に回す
-        if run_time < now:
-            run_time += datetime.timedelta(days=1)
-
-        scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_morning")
-        logger.info(f"🌟 午前のランダム会話を {run_time} に設定しました")
+        if run_time > now:
+            # 今日これからの時間なら実行
+            scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_morning")
+            logger.info(f"🌟 午前のランダム会話を {run_time} に設定しました")
+        else:
+            logger.info("⏭️ 今日の午前はすでに過ぎているのでスキップ（0時に再設定されます）")
     else:
         logger.info("⏩ 午前ジョブは既に存在するのでスキップ")
-
-    # 午後（13〜22時のランダム、50%の確率）
-    if "random_chat_afternoon" not in jobs and now.time() < datetime.time(22, 0):
-        if random.random() < 0.5:  # 50%の確率で実行
-            hour = random.randint(13, 21)
-            minute = random.randint(0, 59)
-            run_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-            # もし今日すでに過ぎてたら翌日に回す
-            if run_time < now:
-                run_time += datetime.timedelta(days=1)
-
-            scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_afternoon")
-            logger.info(f"🌟 午後のランダム会話を {run_time} に設定しました")
-        else:
-            # ダミージョブを追加（実行されない未来の日付にセットする）
-            dummy_time = now + datetime.timedelta(days=7)
-            scheduler.add_job(lambda: None, "date", run_date=dummy_time, id="random_chat_afternoon")
-            logger.info("⏭️ 本日は午後のランダム会話をスキップ（ダミージョブ登録）")
-    else:
-        logger.info("⏩ 午後ジョブは既に存在するか時間外なのでスキップ")
 
     # 翌日0時に再設定
     if "reset_random_chats" not in jobs:
