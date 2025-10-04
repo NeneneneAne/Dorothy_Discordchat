@@ -1022,12 +1022,12 @@ async def check_and_notify_resin():
 
 
 def schedule_resin_check():
-    """30分ごとに自動で樹脂チェック"""
+    """15分ごとに自動で樹脂チェック"""
     global scheduler, logger
     scheduler.add_job(
         check_and_notify_resin,
         "interval",
-        minutes=30,
+        minutes=15,
         id="check_resin",
         replace_existing=True
     )
