@@ -1001,7 +1001,7 @@ async def check_and_notify_resin(user: discord.User | None = None):
 
     try:
         resin, max_resin, recover_time = get_resin_status()
-        logger.info(f"🌿 現在の樹脂: {resin}/{max_resin}")
+        logger.info(f"🌿現在の樹脂は{resin}/{max_resin}")
 
         if resin >= 190:
             # userが指定されていなければenvの通知対象ユーザーを使う
@@ -1012,8 +1012,8 @@ async def check_and_notify_resin(user: discord.User | None = None):
                 recover_hours = int(recover_time) // 3600
                 recover_minutes = (int(recover_time) % 3600) // 60
                 message = (
-                    f"⚠️ **原神の樹脂が {resin}/{max_resin} に達しました！**\n"
-                    f"全回復まで: 約 {recover_hours}時間 {recover_minutes}分"
+                    f"**🌙原神の樹脂が {resin}/{max_resin} に達したよ～！**\n"
+                    f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！"
                 )
                 await user.send(message)
                 logger.info(f"✅ 樹脂通知を {user.name} に送信しました")
@@ -1064,7 +1064,7 @@ def get_resin_status():
 
     return resin, max_resin, recover_time
 
-@bot.tree.command(name="resin_check", description="原神の樹脂を手動でチェックして通知します")
+@bot.tree.command(name="resin_check", description="原神の樹脂を手動で取得するよ～！)
 async def resin_check(interaction: discord.Interaction):
     await interaction.response.defer()  # 処理が重い場合は応答を遅延
     user = interaction.user  # コマンドを実行したユーザーに通知
@@ -1072,11 +1072,11 @@ async def resin_check(interaction: discord.Interaction):
     
     if resin is not None:
         await interaction.followup.send(
-            f"🌿 現在の樹脂: {resin}/{max_resin}\n"
-            f"全回復まで: 約 {int(recover_time)//3600}時間 {(int(recover_time)%3600)//60}分"
+            f"🌙ハニーの今の樹脂は{resin}/{max_resin}だよ！\n"
+            f"全回復まで約{int(recover_time)//3600}時間 {(int(recover_time)%3600)//60}分だよ～！"
         )
     else:
-        await interaction.followup.send("❌ 樹脂チェック中にエラーが発生しました。")
+        await interaction.followup.send("❌樹脂のチェック中にエラーが発生したよ～！")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
