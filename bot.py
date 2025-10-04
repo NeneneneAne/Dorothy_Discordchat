@@ -1038,9 +1038,7 @@ def schedule_resin_check():
     )
     logger.info("⏰ 原神の樹脂チェックを30分ごとにスケジュールしました")
 
-
 def get_resin_status():
-    """HoYoLABのAPIを使って原神の樹脂状況を取得する"""
     headers = {
         "Cookie": f"ltuid={HOYOLAB_LTUID}; ltoken={HOYOLAB_LTOKEN};",
         "x-rpc-app_version": "2.34.1",
@@ -1057,6 +1055,10 @@ def get_resin_status():
         raise Exception(f"HoYoLAB API Error: {response.status_code}")
 
     data = response.json()
+
+    if not data or "data" not in data or data["data"] is None:
+        raise Exception(f"HoYoLAB API returned invalid data: {data}")
+
     resin = int(data["data"]["current_resin"])
     max_resin = int(data["data"]["max_resin"])
     recover_time = data["data"]["resin_recovery_time"]
