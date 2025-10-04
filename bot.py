@@ -249,6 +249,33 @@ def schedule_sleep_check():
             timezone=JST
         )
 
+def get_schedule(job_id: str):
+    url = f"{SUPABASE_URL}/rest/v1/random_chat_schedule?id=eq.{job_id}"
+    res = requests.get(url, headers=SUPABASE_HEADERS)
+    data = res.json()
+    if data:
+        # UTC→JSTに変換
+        return datetime.datetime.fromisoformat(data[0]["run_time"]).astimezone(JST)
+    return None
+
+# スケジュールを保存/更新
+def save_schedule(job_id: str, run_time: datetime.datetime):
+    url = f"{SUPABASE_URL}/rest/v1/random_chat_schedule"
+    payload = {
+        "id": job_id,
+        "run_time": run_time.astimezone(datetime.timezone.utc).isoformat()
+    }
+    res = requests.post(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+    if res.status_code not in (200, 201):
+        # 既存なら upsert
+        url = f"{SUPABASE_URL}/rest/v1/random_chat_schedule?id=eq.{job_id}"
+        requests.patch(url, headers=SUPABASE_HEADERS, data=json.dumps(payload))
+
+# スケジュールを削除
+def delete_schedule(job_id: str):
+    url = f"{SUPABASE_URL}/rest/v1/random_chat_schedule?id=eq.{job_id}"
+    requests.delete(url, headers=SUPABASE_HEADERS)
+
 def start_twitter_bot():
     logger.warning("🚫 Twitter Botは現在無効化されています。ENABLE_TWITTER_BOT=trueで有効化できます。")
     return
@@ -926,28 +953,40 @@ async def send_random_chat():
 
 def schedule_random_chats():
     logger.info("🔁 schedule_random_chats が呼ばれました。")
-    now = datetime.datetime.now(JST)
     jobs = {job.id for job in scheduler.get_jobs()}
 
-    # 午前（10〜12時のランダム1回）
+    # 午前のランダム会話
     if "random_chat_morning" not in jobs:
-        hour = random.randint(10, 11)   # 10時〜11時
-        minute = random.randint(0, 59)
-        run_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        run_time = get_schedule("random_chat_morning")
 
-        if run_time > now:
-            # 今日これからの時間なら実行
-            scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_morning")
-            logger.info(f"🌟 午前のランダム会話を {run_time} に設定しました")
-        else:
-            logger.info("⏭️ 今日の午前はすでに過ぎているのでスキップ（0時に再設定されます）")
+        if not run_time:
+            # Supabaseにまだ無い → 新しくランダム設定
+            now = datetime.datetime.now(JST)
+            hour = random.randint(10, 11)  # 10〜11時
+            minute = random.randint(0, 59)
+            run_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+            if run_time <= now:
+                run_time += datetime.timedelta(days=1)
+
+            save_schedule("random_chat_morning", run_time)
+
+        scheduler.add_job(send_random_chat, "date", run_date=run_time, id="random_chat_morning")
+        logger.info(f"🌟 午前のランダム会話を {run_time} に設定しました")
     else:
         logger.info("⏩ 午前ジョブは既に存在するのでスキップ")
 
-    # 翌日0時に再設定
+    # 翌日0時にリセット
     if "reset_random_chats" not in jobs:
-        scheduler.add_job(schedule_random_chats, "cron", hour=0, minute=0, id="reset_random_chats")
+        scheduler.add_job(reset_schedule, "cron", hour=0, minute=0, id="reset_random_chats")
         logger.info("🌟 reset_random_chats を登録しました")
+
+
+def reset_schedule():
+    logger.info("🔄 reset_schedule が呼ばれました")
+    delete_schedule("random_chat_morning")
+    schedule_random_chats()
+
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
