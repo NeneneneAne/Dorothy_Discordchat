@@ -51,8 +51,8 @@ LOG_FILE = "conversation_logs.json"
 JST = pytz.timezone("Asia/Tokyo")
 GUILD_IDS = [int(x) for x in os.getenv("GUILD_IDS", "").split(",") if x.strip()]
 HOYOLAB_API = "https://bbs-api-os.hoyoverse.com/game_record/genshin/api/dailyNote"
-LTOKEN = os.getenv("HOYOLAB_LTOKEN")
-LTUID = os.getenv("HOYOLAB_LTUID")
+HOYOLAB_LTOKEN = os.getenv("HOYOLAB_LTOKEN")
+HOYOLAB_LTUID = os.getenv("HOYOLAB_LTUID")
 GENSHIN_UID = os.getenv("GENSHIN_UID")       # 自分のUID（例: 812345678）
 GENSHIN_SERVER = os.getenv("GENSHIN_SERVER", "os_asia")  # 日本サーバーは os_asia
 DISCORD_NOTIFY_USER_ID = os.getenv("DISCORD_NOTIFY_USER_ID")
@@ -1052,7 +1052,7 @@ def get_resin_status():
         "role_id": GENSHIN_UID,
     }
 
-    response = requests.get(DAILY_NOTE_URL, headers=headers, params=params)
+    response = requests.get(HOYOLAB_API, headers=headers, params=params)
     if response.status_code != 200:
         raise Exception(f"HoYoLAB API Error: {response.status_code}")
 
