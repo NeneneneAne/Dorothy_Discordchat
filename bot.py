@@ -995,8 +995,8 @@ def reset_schedule():
     delete_schedule("random_chat_morning")
     schedule_random_chats()
 
-async def check_and_notify_resin():
-    """樹脂をチェックして、190以上ならDM通知"""
+async def check_and_notify_resin(user: discord.User | None = None):
+    """樹脂をチェックして、190以上なら指定ユーザーにDM通知"""
     global bot, logger, DISCORD_NOTIFY_USER_ID
 
     try:
@@ -1004,7 +1004,10 @@ async def check_and_notify_resin():
         logger.info(f"🌿 現在の樹脂: {resin}/{max_resin}")
 
         if resin >= 190:
-            user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
+            # userが指定されていなければenvの通知対象ユーザーを使う
+            if user is None:
+                user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
+
             if user:
                 recover_hours = int(recover_time) // 3600
                 recover_minutes = (int(recover_time) % 3600) // 60
@@ -1017,9 +1020,11 @@ async def check_and_notify_resin():
         else:
             logger.info("⏩ 樹脂はまだ190未満です")
 
+        return resin, max_resin, recover_time
+
     except Exception as e:
         logger.error(f"樹脂チェック中にエラー: {e}")
-
+        return None, None, None
 
 def schedule_resin_check():
     """15分ごとに自動で樹脂チェック"""
