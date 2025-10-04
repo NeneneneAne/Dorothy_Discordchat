@@ -995,6 +995,69 @@ def reset_schedule():
     delete_schedule("random_chat_morning")
     schedule_random_chats()
 
+async def check_and_notify_resin():
+    """樹脂をチェックして、190以上ならDM通知"""
+    global bot, logger, DISCORD_NOTIFY_USER_ID
+
+    try:
+        resin, max_resin, recover_time = get_resin_status()
+        logger.info(f"🌿 現在の樹脂: {resin}/{max_resin}")
+
+        if resin >= 190:
+            user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
+            if user:
+                recover_hours = int(recover_time) // 3600
+                recover_minutes = (int(recover_time) % 3600) // 60
+                message = (
+                    f"⚠️ **原神の樹脂が {resin}/{max_resin} に達しました！**\n"
+                    f"全回復まで: 約 {recover_hours}時間 {recover_minutes}分"
+                )
+                await user.send(message)
+                logger.info(f"✅ 樹脂通知を {user.name} に送信しました")
+        else:
+            logger.info("⏩ 樹脂はまだ190未満です")
+
+    except Exception as e:
+        logger.error(f"樹脂チェック中にエラー: {e}")
+
+
+def schedule_resin_check():
+    """30分ごとに自動で樹脂チェック"""
+    global scheduler, logger
+    scheduler.add_job(
+        check_and_notify_resin,
+        "interval",
+        minutes=30,
+        id="check_resin",
+        replace_existing=True
+    )
+    logger.info("⏰ 原神の樹脂チェックを30分ごとにスケジュールしました")
+
+
+def get_resin_status():
+    """HoYoLABのAPIを使って原神の樹脂状況を取得する"""
+    headers = {
+        "Cookie": f"ltuid={HOYOLAB_LTUID}; ltoken={HOYOLAB_LTOKEN};",
+        "x-rpc-app_version": "2.34.1",
+        "x-rpc-client_type": "5",
+    }
+
+    params = {
+        "server": GENSHIN_SERVER,
+        "role_id": GENSHIN_UID,
+    }
+
+    response = requests.get(DAILY_NOTE_URL, headers=headers, params=params)
+    if response.status_code != 200:
+        raise Exception(f"HoYoLAB API Error: {response.status_code}")
+
+    data = response.json()
+    resin = int(data["data"]["current_resin"])
+    max_resin = int(data["data"]["max_resin"])
+    recover_time = data["data"]["resin_recovery_time"]
+
+    return resin, max_resin, recover_time
+
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
 
