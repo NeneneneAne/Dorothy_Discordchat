@@ -50,6 +50,12 @@ DAILY_FILE = "daily_notifications.json"
 LOG_FILE = "conversation_logs.json"
 JST = pytz.timezone("Asia/Tokyo")
 GUILD_IDS = [int(x) for x in os.getenv("GUILD_IDS", "").split(",") if x.strip()]
+HOYOLAB_API = "https://bbs-api-os.hoyoverse.com/game_record/genshin/api/dailyNote"
+LTOKEN = os.getenv("HOYOLAB_LTOKEN")
+LTUID = os.getenv("HOYOLAB_LTUID")
+GENSHIN_UID = os.getenv("GENSHIN_UID")       # 自分のUID（例: 812345678）
+GENSHIN_SERVER = os.getenv("GENSHIN_SERVER", "os_asia")  # 日本サーバーは os_asia
+DISCORD_NOTIFY_USER_ID = os.getenv("DISCORD_NOTIFY_USER_ID")
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -987,6 +993,74 @@ def reset_schedule():
     delete_schedule("random_chat_morning")
     schedule_random_chats()
 
+def get_genshin_resin_status():
+    """
+    HoYoLABのAPIを使って原神の樹脂情報を取得します。
+    成功時は (current_resin, max_resin) を返します。
+    エラー時は None を返します。
+    """
+    headers = {
+        "Cookie": f"ltoken={LTOKEN}; ltuid={LTUID}",
+        "x-rpc-app_version": "2.36.1",
+        "x-rpc-client_type": "5",
+        "User-Agent": "Mozilla/5.0",
+    }
+    params = {
+        "role_id": GENSHIN_UID,
+        "server": GENSHIN_SERVER,
+    }
+
+    try:
+        res = requests.get(HOYOLAB_API, headers=headers, params=params)
+        data = res.json()
+
+        if data.get("retcode") != 0:
+            logger.error(f"HoYoLAB APIエラー: {data}")
+            return None
+
+        resin_info = data["data"]
+        current_resin = resin_info["current_resin"]
+        max_resin = resin_info["max_resin"]
+
+        logger.info(f"🌿 現在の樹脂: {current_resin}/{max_resin}")
+        return current_resin, max_resin
+
+    except Exception as e:
+        logger.error(f"原神樹脂データ取得エラー: {e}")
+        return None
+
+async def check_and_notify_resin():
+    """
+    原神の樹脂を取得し、190以上なら.envで指定されたユーザーにDMを送信する。
+    """
+    resin_data = get_genshin_resin_status()
+    if not resin_data:
+        logger.warning("⚠️ 樹脂データを取得できませんでした。")
+        return
+
+    current_resin, max_resin = resin_data
+    logger.info(f"🌿 現在の樹脂: {current_resin}/{max_resin}")
+
+    # 閾値チェック
+    if current_resin >= 190:
+        try:
+            # 通知先ユーザーID（.envから）
+            target_user_id = os.getenv("DISCORD_NOTIFY_USER_ID")
+            if not target_user_id:
+                logger.warning("⚠️ DISCORD_NOTIFY_USER_ID が設定されていません。通知をスキップします。")
+                return
+
+            # Discordユーザー取得
+            user = await bot.fetch_user(int(target_user_id))
+            message = f"💧 原神の樹脂が {current_resin}/{max_resin} になったよ！\nそろそろ消化しよう！"
+
+            await user.send(message)
+            logger.info(f"✅ {user.name} に樹脂通知を送信しました。")
+
+        except Exception as e:
+            logger.error(f"❌ DM送信中にエラー: {e}")
+    else:
+        logger.info("🕒 樹脂はまだ190未満なので通知しません。")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
