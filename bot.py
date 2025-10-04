@@ -1036,11 +1036,11 @@ def schedule_resin_check():
         id="check_resin",
         replace_existing=True
     )
-    logger.info("⏰ 原神の樹脂チェックを30分ごとにスケジュールしました")
+    logger.info("⏰ 原神の樹脂チェックを15分ごとにスケジュールしました")
 
 def get_resin_status():
     headers = {
-        "Cookie": f"ltuid={HOYOLAB_LTUID}; ltoken={HOYOLAB_LTOKEN};",
+        "Cookie": f"ltoken_v2={HOYOLAB_LTOKEN}; ltuid_v2={HOYOLAB_LTUID};",
         "x-rpc-app_version": "2.34.1",
         "x-rpc-client_type": "5",
     }
@@ -1048,12 +1048,11 @@ def get_resin_status():
     params = {
         "server": GENSHIN_SERVER,
         "role_id": GENSHIN_UID,
+        "schedule_type": 1,
     }
 
     response = requests.get(HOYOLAB_API, headers=headers, params=params)
-    if response.status_code != 200:
-        raise Exception(f"HoYoLAB API Error: {response.status_code}")
-
+    response.raise_for_status()
     data = response.json()
 
     if not data or "data" not in data or data["data"] is None:
@@ -1061,7 +1060,7 @@ def get_resin_status():
 
     resin = int(data["data"]["current_resin"])
     max_resin = int(data["data"]["max_resin"])
-    recover_time = data["data"]["resin_recovery_time"]
+    recover_time = int(data["data"]["resin_recovery_time"])  # 秒単位
 
     return resin, max_resin, recover_time
 
