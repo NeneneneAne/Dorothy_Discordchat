@@ -1058,6 +1058,20 @@ def get_resin_status():
 
     return resin, max_resin, recover_time
 
+@bot.tree.command(name="resin_check", description="原神の樹脂を手動でチェックして通知します")
+async def resin_check(interaction: discord.Interaction):
+    await interaction.response.defer()  # 処理が重い場合は応答を遅延
+    user = interaction.user  # コマンドを実行したユーザーに通知
+    resin, max_resin, recover_time = await check_and_notify_resin(user=user)
+    
+    if resin is not None:
+        await interaction.followup.send(
+            f"🌿 現在の樹脂: {resin}/{max_resin}\n"
+            f"全回復まで: 約 {int(recover_time)//3600}時間 {(int(recover_time)%3600)//60}分"
+        )
+    else:
+        await interaction.followup.send("❌ 樹脂チェック中にエラーが発生しました。")
+
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
 
