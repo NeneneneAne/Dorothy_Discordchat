@@ -350,6 +350,7 @@ async def on_ready():
         schedule_daily_todos()
         schedule_sleep_check() 
         schedule_random_chats()
+        schedule_resin_check()
 
         logger.error("スケジュールを設定しました。")
         logger.error("🗓️ sleep_check_times:", sleep_check_times)
@@ -369,6 +370,7 @@ async def on_resumed():
     schedule_daily_todos()
     schedule_sleep_check()
     schedule_random_chats()
+    schedule_resin_check()
     
 # 通知設定コマンド
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
@@ -993,74 +995,70 @@ def reset_schedule():
     delete_schedule("random_chat_morning")
     schedule_random_chats()
 
-def get_genshin_resin_status():
-    """
-    HoYoLABのAPIを使って原神の樹脂情報を取得します。
-    成功時は (current_resin, max_resin) を返します。
-    エラー時は None を返します。
-    """
+def get_resin_status():
+    """HoYoLABのAPIを使って原神の樹脂状況を取得する"""
     headers = {
-        "Cookie": f"ltoken={LTOKEN}; ltuid={LTUID}",
-        "x-rpc-app_version": "2.36.1",
+        "Cookie": f"ltuid={HOYOLAB_LTUID}; ltoken={HOYOLAB_LTOKEN};",
+        "x-rpc-app_version": "2.34.1",
         "x-rpc-client_type": "5",
-        "User-Agent": "Mozilla/5.0",
     }
+
     params = {
-        "role_id": GENSHIN_UID,
         "server": GENSHIN_SERVER,
+        "role_id": GENSHIN_UID,
     }
 
-    try:
-        res = requests.get(HOYOLAB_API, headers=headers, params=params)
-        data = res.json()
+    response = requests.get(DAILY_NOTE_URL, headers=headers, params=params)
+    if response.status_code != 200:
+        raise Exception(f"HoYoLAB API Error: {response.status_code}")
 
-        if data.get("retcode") != 0:
-            logger.error(f"HoYoLAB APIエラー: {data}")
-            return None
+    data = response.json()
+    resin = int(data["data"]["current_resin"])
+    max_resin = int(data["data"]["max_resin"])
+    recover_time = data["data"]["resin_recovery_time"]
 
-        resin_info = data["data"]
-        current_resin = resin_info["current_resin"]
-        max_resin = resin_info["max_resin"]
+    return resin, max_resin, recover_time
 
-        logger.info(f"🌿 現在の樹脂: {current_resin}/{max_resin}")
-        return current_resin, max_resin
-
-    except Exception as e:
-        logger.error(f"原神樹脂データ取得エラー: {e}")
-        return None
 
 async def check_and_notify_resin():
-    """
-    原神の樹脂を取得し、190以上なら.envで指定されたユーザーにDMを送信する。
-    """
-    resin_data = get_genshin_resin_status()
-    if not resin_data:
-        logger.warning("⚠️ 樹脂データを取得できませんでした。")
-        return
+    """樹脂をチェックして、190以上ならDM通知"""
+    from main import bot, logger  # botやloggerをメインから参照
 
-    current_resin, max_resin = resin_data
-    logger.info(f"🌿 現在の樹脂: {current_resin}/{max_resin}")
+    try:
+        resin, max_resin, recover_time = get_resin_status()
+        logger.info(f"🌿 現在の樹脂: {resin}/{max_resin}")
 
-    # 閾値チェック
-    if current_resin >= 190:
-        try:
-            # 通知先ユーザーID（.envから）
-            target_user_id = os.getenv("DISCORD_NOTIFY_USER_ID")
-            if not target_user_id:
-                logger.warning("⚠️ DISCORD_NOTIFY_USER_ID が設定されていません。通知をスキップします。")
-                return
+        # 通知条件
+        if resin >= 190:
+            user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
+            if user:
+                recover_hours = int(recover_time) // 3600
+                recover_minutes = (int(recover_time) % 3600) // 60
+                message = (
+                    f"⚠️ **原神の樹脂が {resin}/{max_resin} に達しました！**\n"
+                    f"全回復まで: 約 {recover_hours}時間 {recover_minutes}分"
+                )
+                await user.send(message)
+                logger.info(f"✅ 樹脂通知を {user.name} に送信しました")
+        else:
+            logger.info("⏩ 樹脂はまだ190未満です")
 
-            # Discordユーザー取得
-            user = await bot.fetch_user(int(target_user_id))
-            message = f"💧 原神の樹脂が {current_resin}/{max_resin} になったよ！\nそろそろ消化しよう！"
+    except Exception as e:
+        logger.error(f"樹脂チェック中にエラー: {e}")
 
-            await user.send(message)
-            logger.info(f"✅ {user.name} に樹脂通知を送信しました。")
 
-        except Exception as e:
-            logger.error(f"❌ DM送信中にエラー: {e}")
-    else:
-        logger.info("🕒 樹脂はまだ190未満なので通知しません。")
+def schedule_resin_check():
+    """30分ごとに自動で樹脂チェック"""
+    from main import scheduler, logger  # メインのスケジューラーを参照
+
+    scheduler.add_job(
+        check_and_notify_resin,
+        "interval",
+        minutes=30,
+        id="check_resin",
+        replace_existing=True
+    )
+    logger.info("⏰ 原神の樹脂チェックを30分ごとにスケジュールしました")
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
