@@ -1064,7 +1064,7 @@ def get_resin_status():
 
     return resin, max_resin, recover_time
 
-@bot.tree.command(name="resin_check", description="原神の樹脂を手動で取得するよ～！)
+@bot.tree.command(name="resin_check", description="原神の樹脂を手動で取得するよ～！")
 async def resin_check(interaction: discord.Interaction):
     await interaction.response.defer()  # 処理が重い場合は応答を遅延
     user = interaction.user  # コマンドを実行したユーザーに通知
