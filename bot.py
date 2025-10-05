@@ -996,22 +996,36 @@ def reset_schedule():
     schedule_random_chats()
 
 def get_last_notify_date():
+    """Supabaseから最後の通知日を取得"""
     try:
-        res = supabase.table("resin_notify").select("last_notify_date").eq("id", "resin_notify_status").execute()
-        if res.data:
-            return datetime.date.fromisoformat(res.data[0]["last_notify_date"])
+        url = f"{SUPABASE_URL}/rest/v1/resin_notify?id=eq.resin_notify_status&select=last_notify_date"
+        response = requests.get(url, headers=SUPABASE_HEADERS)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                return datetime.date.fromisoformat(data[0]["last_notify_date"])
+        else:
+            logger.error(f"⚠️ Supabase取得エラー: {response.status_code} {response.text}")
     except Exception as e:
         logger.error(f"⚠️ Supabaseから通知日を取得中にエラー: {e}")
     return None
 
 def save_last_notify_date(date_value):
+    """Supabaseに最後の通知日を保存"""
     try:
-        # 既存レコードがあればupdate、なければinsert
-        supabase.table("resin_notify").upsert({
+        url = f"{SUPABASE_URL}/rest/v1/resin_notify?on_conflict=id"
+        payload = [{
             "id": "resin_notify_status",
             "last_notify_date": date_value.isoformat()
-        }).execute()
-        logger.info(f"🗓️ Supabaseに通知日 {date_value} を保存しました")
+        }]
+
+        response = requests.post(url, headers=SUPABASE_HEADERS, json=payload)
+
+        if response.status_code in (200, 201, 204):
+            logger.info(f"🗓️ Supabaseに通知日 {date_value} を保存しました")
+        else:
+            logger.error(f"⚠️ Supabaseへの通知日保存失敗: {response.status_code} {response.text}")
+
     except Exception as e:
         logger.error(f"⚠️ Supabaseへの通知日保存中にエラー: {e}")
 
