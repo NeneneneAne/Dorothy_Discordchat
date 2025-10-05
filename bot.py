@@ -1012,7 +1012,7 @@ async def check_and_notify_resin(user: discord.User | None = None):
                 recover_hours = int(recover_time) // 3600
                 recover_minutes = (int(recover_time) % 3600) // 60
                 message = (
-                    f"**🌙原神の樹脂が溢れそうだよ～！**\n"
+                    f"🌙ハニーの樹脂が溢れそうだよ～！\n"
                     f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！"
                 )
                 await user.send(message)
