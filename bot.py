@@ -995,16 +995,39 @@ def reset_schedule():
     delete_schedule("random_chat_morning")
     schedule_random_chats()
 
+def get_last_notify_date():
+    try:
+        res = supabase.table("resin_notify").select("last_notify_date").eq("id", "resin_notify_status").execute()
+        if res.data:
+            return datetime.date.fromisoformat(res.data[0]["last_notify_date"])
+    except Exception as e:
+        logger.error(f"⚠️ Supabaseから通知日を取得中にエラー: {e}")
+    return None
+
+def save_last_notify_date(date_value):
+    try:
+        # 既存レコードがあればupdate、なければinsert
+        supabase.table("resin_notify").upsert({
+            "id": "resin_notify_status",
+            "last_notify_date": date_value.isoformat()
+        }).execute()
+        logger.info(f"🗓️ Supabaseに通知日 {date_value} を保存しました")
+    except Exception as e:
+        logger.error(f"⚠️ Supabaseへの通知日保存中にエラー: {e}")
+
 async def check_and_notify_resin(user: discord.User | None = None):
-    """樹脂をチェックして、190以上なら指定ユーザーにDM通知"""
+    """樹脂をチェックして、190以上なら指定ユーザーにDM通知（Supabase連携で1日1回のみ）"""
     global bot, logger, DISCORD_NOTIFY_USER_ID
 
     try:
         resin, max_resin, recover_time = get_resin_status()
         logger.info(f"🌿現在の樹脂は{resin}/{max_resin}")
 
-        if resin >= 190:
-            # userが指定されていなければenvの通知対象ユーザーを使う
+        today = datetime.datetime.now(JST).date()
+        last_notify_date = get_last_notify_date()
+
+        # 通知条件
+        if resin >= 190 and last_notify_date != today:
             if user is None:
                 user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
 
@@ -1012,13 +1035,18 @@ async def check_and_notify_resin(user: discord.User | None = None):
                 recover_hours = int(recover_time) // 3600
                 recover_minutes = (int(recover_time) % 3600) // 60
                 message = (
-                    f"🌙ハニーの樹脂が溢れそうだよ～！\n"
+                    f"**🌙原神の樹脂が溢れそうだよ～！**\n"
                     f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！"
                 )
                 await user.send(message)
-                logger.info(f"✅ 樹脂通知を {user.name} に送信しました")
+                save_last_notify_date(today)
+                logger.info(f"✅ 樹脂通知を {user.name} に送信しました ({today})")
+
+        elif resin >= 190:
+            logger.info("📭 今日の樹脂通知はすでに送信済みです。スキップ。")
+
         else:
-            logger.info("⏩ 樹脂はまだ190未満です")
+            logger.info("⏩ 樹脂はまだ190未満です。通知スキップ。")
 
         return resin, max_resin, recover_time
 
