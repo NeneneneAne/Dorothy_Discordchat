@@ -1030,7 +1030,7 @@ def save_last_notify_date(date_value):
         logger.error(f"⚠️ Supabaseへの通知日保存中にエラー: {e}")
 
 async def check_and_notify_resin(user: discord.User | None = None):
-    """樹脂をチェックして、190以上なら指定ユーザーにDM通知（Supabase連携で1日1回のみ）"""
+    """樹脂をチェックして、190以上なら指定ユーザーにDM通知（1日最大3回まで）"""
     global bot, logger, DISCORD_NOTIFY_USER_ID
 
     try:
@@ -1038,10 +1038,20 @@ async def check_and_notify_resin(user: discord.User | None = None):
         logger.info(f"🌿現在の樹脂は{resin}/{max_resin}")
 
         today = datetime.datetime.now(JST).date()
-        last_notify_date = get_last_notify_date()
 
-        # 通知条件
-        if resin >= 190 and last_notify_date != today:
+        # --- Supabaseから今日の通知履歴を取得 ---
+        url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?select=*"
+        response = requests.get(url, headers=SUPABASE_HEADERS)
+        notify_count = 0
+        if response.status_code == 200 and response.json():
+            record = response.json()[0]
+            last_date = datetime.date.fromisoformat(record["date"])
+            notify_count = record["count"] if last_date == today else 0
+        else:
+            last_date = None
+
+        # --- 通知条件 ---
+        if resin >= 190 and notify_count < 3:
             if user is None:
                 user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
 
@@ -1050,15 +1060,26 @@ async def check_and_notify_resin(user: discord.User | None = None):
                 recover_minutes = (int(recover_time) % 3600) // 60
                 message = (
                     f"🌙原神の樹脂が溢れそうだよ～！\n"
-                    f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！"
+                    f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！\n"
+                    f"（今日{notify_count + 1}回目の通知だよ）"
                 )
                 await user.send(message)
-                save_last_notify_date(today)
-                logger.info(f"✅ 樹脂通知を {user.name} に送信しました ({today})")
 
+                # --- Supabaseに通知回数を保存 ---
+                payload = [{
+                    "id": "resin_notify_status",
+                    "date": today.isoformat(),
+                    "count": notify_count + 1
+                }]
+                requests.post(
+                    f"{SUPABASE_URL}/rest/v1/resin_notify_count?on_conflict=id",
+                    headers=SUPABASE_HEADERS,
+                    json=payload
+                )
+
+                logger.info(f"✅ {user.name} に樹脂通知を送信 ({today}, {notify_count + 1}回目)")
         elif resin >= 190:
-            logger.info("📭 今日の樹脂通知はすでに送信済みです。スキップ。")
-
+            logger.info(f"📭 今日の通知上限（3回）に達しています。スキップ。")
         else:
             logger.info("⏩ 樹脂はまだ190未満です。通知スキップ。")
 
