@@ -630,7 +630,7 @@ async def get_gemini_response(user_id, user_input):
         "parts": [{"text": user_input}],
         "timestamp": current_time
     })
-    conversation_logs[user_id] = conversation_logs[user_id][-7:]  # トークン節約のため10件に減らす
+    conversation_logs[user_id] = conversation_logs[user_id][-20:]  # トークン節約のため10件に減らす
 
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
     for m in conversation_logs[user_id]:
