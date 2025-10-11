@@ -1040,15 +1040,17 @@ async def check_and_notify_resin(user: discord.User | None = None):
         today = datetime.datetime.now(JST).date()
 
         # --- Supabaseから今日の通知履歴を取得 ---
-        url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?select=*"
+        url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?id=eq.resin_notify_status&select=*"
         response = requests.get(url, headers=SUPABASE_HEADERS)
         notify_count = 0
+        last_date = None
+
         if response.status_code == 200 and response.json():
             record = response.json()[0]
             last_date = datetime.date.fromisoformat(record["date"])
             notify_count = record["count"] if last_date == today else 0
         else:
-            last_date = None
+            logger.info("📄 通知履歴がまだありません。新規作成します。")
 
         # --- 通知条件 ---
         if resin >= 190 and notify_count < 3:
@@ -1066,16 +1068,19 @@ async def check_and_notify_resin(user: discord.User | None = None):
                 await user.send(message)
 
                 # --- Supabaseに通知回数を保存 ---
-                payload = [{
-                    "id": "resin_notify_status",
-                    "date": today.isoformat(),
-                    "count": notify_count + 1
-                }]
-                requests.post(
-                    f"{SUPABASE_URL}/rest/v1/resin_notify_count?on_conflict=id",
-                    headers=SUPABASE_HEADERS,
-                    json=payload
-                )
+                if last_date == today:
+                    # 既存レコードを更新
+                    payload = {"count": notify_count + 1}
+                    patch_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?id=eq.resin_notify_status"
+                    requests.patch(patch_url, headers=SUPABASE_HEADERS, json=payload)
+                else:
+                    # 新しい日なのでリセット
+                    payload = [{
+                        "id": "resin_notify_status",
+                        "date": today.isoformat(),
+                        "count": 1
+                    }]
+                    requests.post(f"{SUPABASE_URL}/rest/v1/resin_notify_count", headers=SUPABASE_HEADERS, json=payload)
 
                 logger.info(f"✅ {user.name} に樹脂通知を送信 ({today}, {notify_count + 1}回目)")
         elif resin >= 190:
