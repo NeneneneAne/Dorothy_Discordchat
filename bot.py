@@ -582,7 +582,7 @@ async def delete_message(interaction: discord.Interaction, message_id: str):
     except ValueError:
         await interaction.response.send_message("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
 
-@bot.tree.command(name="__RESET_DM_SYSTEM__", description="ドロシーとのDM履歴を全部削除するよ～！")
+@bot.tree.command(name="reset_dm_system", description="ドロシーとのDM履歴を全部削除するよ～！")
 async def clear_dm_messages(interaction: discord.Interaction):
     # サーバーで実行された場合は拒否
     if interaction.guild:
