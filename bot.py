@@ -1039,52 +1039,59 @@ async def check_and_notify_resin(user: discord.User | None = None):
 
         today = datetime.datetime.now(JST).date()
 
-        # --- Supabaseから今日の通知履歴を取得 ---
-        url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?id=eq.resin_notify_status&select=*"
+        # --- Supabaseから通知履歴を取得 ---
+        url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?select=*"
         response = requests.get(url, headers=SUPABASE_HEADERS)
+
         notify_count = 0
         last_date = None
 
         if response.status_code == 200 and response.json():
             record = response.json()[0]
-            last_date = datetime.date.fromisoformat(record["date"])
-            notify_count = record["count"] if last_date == today else 0
+            last_date_str = record.get("date")
+            if last_date_str:
+                last_date = datetime.date.fromisoformat(last_date_str)
+            if last_date == today:
+                notify_count = record.get("count", 0)
+            else:
+                notify_count = 0  # 新しい日なのでリセット
         else:
-            logger.info("📄 通知履歴がまだありません。新規作成します。")
+            logger.info("📄 resin_notify_count レコードが存在しません。")
 
         # --- 通知条件 ---
-        if resin >= 190 and notify_count < 3:
-            if user is None:
-                user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
+        if resin >= 190:
+            if notify_count < 3:
+                if user is None:
+                    user = await bot.fetch_user(int(DISCORD_NOTIFY_USER_ID))
 
-            if user:
-                recover_hours = int(recover_time) // 3600
-                recover_minutes = (int(recover_time) % 3600) // 60
-                message = (
-                    f"🌙原神の樹脂が溢れそうだよ～！\n"
-                    f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！\n"
-                    f"（今日{notify_count + 1}回目の通知だよ）"
-                )
-                await user.send(message)
+                if user:
+                    recover_hours = int(recover_time) // 3600
+                    recover_minutes = (int(recover_time) % 3600) // 60
+                    message = (
+                        f"🌙原神の樹脂が溢れそうだよ～！\n"
+                        f"全回復まで約{recover_hours}時間 {recover_minutes}分だよ～！"
+                    )
+                    await user.send(message)
 
-                # --- Supabaseに通知回数を保存 ---
-                if last_date == today:
-                    # 既存レコードを更新
-                    payload = {"count": notify_count + 1}
-                    patch_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?id=eq.resin_notify_status"
-                    requests.patch(patch_url, headers=SUPABASE_HEADERS, json=payload)
-                else:
-                    # 新しい日なのでリセット
-                    payload = [{
-                        "id": "resin_notify_status",
-                        "date": today.isoformat(),
-                        "count": 1
-                    }]
-                    requests.post(f"{SUPABASE_URL}/rest/v1/resin_notify_count", headers=SUPABASE_HEADERS, json=payload)
+                    # --- Supabaseへ更新 ---
+                    if last_date == today:
+                        # 今日分 → カウント更新
+                        patch_payload = {"count": notify_count + 1}
+                        patch_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?id=eq.resin_notify_status"
+                        requests.patch(patch_url, headers=SUPABASE_HEADERS, json=patch_payload)
+                    else:
+                        # 新しい日 → レコード上書き
+                        post_payload = [{
+                            "id": "resin_notify_status",
+                            "date": today.isoformat(),
+                            "count": 1
+                        }]
+                        post_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count"
+                        requests.post(post_url, headers=SUPABASE_HEADERS, json=post_payload)
 
-                logger.info(f"✅ {user.name} に樹脂通知を送信 ({today}, {notify_count + 1}回目)")
-        elif resin >= 190:
-            logger.info(f"📭 今日の通知上限（3回）に達しています。スキップ。")
+                    logger.info(f"✅ {user.name} に樹脂通知を送信しました ({today}, {notify_count + 1}回目)")
+            else:
+                logger.info("📭 今日の通知上限（3回）に達しています。スキップ。")
         else:
             logger.info("⏩ 樹脂はまだ190未満です。通知スキップ。")
 
