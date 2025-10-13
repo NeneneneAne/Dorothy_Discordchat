@@ -583,37 +583,57 @@ async def delete_message(interaction: discord.Interaction, message_id: str):
         await interaction.response.send_message("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
 
 @bot.tree.command(name="reset_dm_system", description="ドロシーとのDM履歴を全部削除するよ～！")
-async def clear_dm_messages(interaction: discord.Interaction):
-    # サーバーで実行された場合は拒否
+async def reset_dm_system(interaction: discord.Interaction):
+    # サーバーで実行されたら拒否
     if interaction.guild:
         await interaction.response.send_message("❌ このコマンドはDM専用だよ～！", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
-    deleted = 0
+
+    dm_channel = interaction.channel
+    if not isinstance(dm_channel, discord.DMChannel):
+        await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
+        return
+
+    # 確認メッセージ
+    await dm_channel.send("⚠️ 本当にドロシーとのDM履歴を全部削除していい？（Y/N）")
+
+    def check(msg: discord.Message):
+        return (
+            msg.author == interaction.user
+            and msg.channel == dm_channel
+            and msg.content.strip().lower() in ["y", "n"]
+        )
 
     try:
-        dm_channel = interaction.channel
-        if not isinstance(dm_channel, discord.DMChannel):
-            await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
+        # ユーザーの返信を待機（60秒以内）
+        reply = await bot.wait_for("message", check=check, timeout=60.0)
+        answer = reply.content.strip().lower()
+
+        if answer == "n":
+            await dm_channel.send("🛑 わかった！削除はやめておくね！")
             return
 
-        async for msg in dm_channel.history(limit=None):
-            try:
-                # Bot自身またはユーザーのメッセージを削除
-                await msg.delete()
-                deleted += 1
-                await asyncio.sleep(0.2)  # レート制限対策
-            except:
-                continue
+        elif answer == "y":
+            await dm_channel.send("🧹 じゃあ全部きれいにするね…！")
+            deleted = 0
 
-        await interaction.followup.send(f"✅ {deleted} 件のメッセージを削除したよ～！", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.followup.send("❌ メッセージを削除する権限がないよ～！", ephemeral=True)
+            async for msg in dm_channel.history(limit=None):
+                try:
+                    await msg.delete()
+                    deleted += 1
+                    await asyncio.sleep(0.2)  # レート制限対策
+                except:
+                    continue
+
+            await dm_channel.send(f"✅ {deleted} 件のメッセージを削除したよ！")
+
+    except asyncio.TimeoutError:
+        await dm_channel.send("⌛ 時間切れだよ～。またやりたくなったらもう一度コマンドを使ってね！")
     except Exception as e:
-        await interaction.followup.send(f"⚠️ エラーが起きちゃった！: {e}", ephemeral=True)
+        await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
 
-        
 # 夜ふかし注意時間設定コマンド
 @bot.tree.command(name="set_sleep_check_time", description="寝る時間チェックの送信時刻を設定するよ！（24時間制）")
 async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minute: int):
