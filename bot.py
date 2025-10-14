@@ -1047,40 +1047,6 @@ def reset_schedule():
     delete_schedule("random_chat_morning")
     schedule_random_chats()
 
-def get_last_notify_date():
-    """Supabaseから最後の通知日を取得"""
-    try:
-        url = f"{SUPABASE_URL}/rest/v1/resin_notify?id=eq.resin_notify_status&select=last_notify_date"
-        response = requests.get(url, headers=SUPABASE_HEADERS)
-        if response.status_code == 200:
-            data = response.json()
-            if data:
-                return datetime.date.fromisoformat(data[0]["last_notify_date"])
-        else:
-            logger.error(f"⚠️ Supabase取得エラー: {response.status_code} {response.text}")
-    except Exception as e:
-        logger.error(f"⚠️ Supabaseから通知日を取得中にエラー: {e}")
-    return None
-
-def save_last_notify_date(date_value):
-    """Supabaseに最後の通知日を保存"""
-    try:
-        url = f"{SUPABASE_URL}/rest/v1/resin_notify?on_conflict=id"
-        payload = [{
-            "id": "resin_notify_status",
-            "last_notify_date": date_value.isoformat()
-        }]
-
-        response = requests.post(url, headers=SUPABASE_HEADERS, json=payload)
-
-        if response.status_code in (200, 201, 204):
-            logger.info(f"🗓️ Supabaseに通知日 {date_value} を保存しました")
-        else:
-            logger.error(f"⚠️ Supabaseへの通知日保存失敗: {response.status_code} {response.text}")
-
-    except Exception as e:
-        logger.error(f"⚠️ Supabaseへの通知日保存中にエラー: {e}")
-
 async def check_and_notify_resin(user: discord.User | None = None):
     """樹脂をチェックして、190以上なら指定ユーザーにDM通知（1日最大3回まで）"""
     global bot, logger, DISCORD_NOTIFY_USER_ID
@@ -1126,22 +1092,20 @@ async def check_and_notify_resin(user: discord.User | None = None):
                     await user.send(message)
 
                     # --- Supabaseへ更新 ---
-                    if last_date == today:
-                        # 今日分 → カウント更新
-                        patch_payload = {"count": notify_count + 1}
-                        patch_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count?id=eq.resin_notify_status"
-                        requests.patch(patch_url, headers=SUPABASE_HEADERS, json=patch_payload)
-                    else:
-                        # 新しい日 → レコード上書き
-                        post_payload = [{
-                            "id": "resin_notify_status",
-                            "date": today.isoformat(),
-                            "count": 1
-                        }]
-                        post_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count"
-                        requests.post(post_url, headers=SUPABASE_HEADERS, json=post_payload)
+                    new_count = notify_count + 1
+                    payload = [{
+                        "id": "resin_notify_status",
+                        "date": today.isoformat(),
+                        "count": new_count
+                    }]
+                    save_url = f"{SUPABASE_URL}/rest/v1/resin_notify_count"
+                    params = {"on_conflict": "id"}
+                    save_response = requests.post(save_url, headers=SUPABASE_HEADERS, json=payload, params=params)
 
-                    logger.info(f"✅ {user.name} に樹脂通知を送信しました ({today}, {notify_count + 1}回目)")
+                    if save_response.status_code in (200, 201, 204):
+                        logger.info(f"✅ {user.name} に樹脂通知を送信しました ({today}, {new_count}回目)")
+                    else:
+                        logger.error(f"⚠️ Supabase更新失敗: {save_response.status_code} {save_response.text}")
             else:
                 logger.info("📭 今日の通知上限（3回）に達しています。スキップ。")
         else:
