@@ -634,6 +634,58 @@ async def reset_dm_system(interaction: discord.Interaction):
     except Exception as e:
         await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
 
+@bot.tree.command(name="clear_message_15", description="ドロシーとのDM履歴を直近15件だけ削除するよ～！")
+async def clear_last_50(interaction: discord.Interaction):
+    # サーバー内では実行できない
+    if interaction.guild:
+        await interaction.response.send_message("❌ このコマンドはDM専用だよ～！", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    dm_channel = interaction.channel
+    if not isinstance(dm_channel, discord.DMChannel):
+        await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
+        return
+
+    # 削除前に確認
+    await dm_channel.send("⚠️ 直近15件のメッセージを削除していい？（Y/N）")
+
+    def check(msg: discord.Message):
+        return (
+            msg.author == interaction.user
+            and msg.channel == dm_channel
+            and msg.content.strip().lower() in ["y", "n"]
+        )
+
+    try:
+        reply = await bot.wait_for("message", check=check, timeout=60.0)
+        answer = reply.content.strip().lower()
+
+        if answer == "n":
+            await dm_channel.send("🛑 わかった！削除はやめておくね！")
+            return
+
+        elif answer == "y":
+            await dm_channel.send("🧹 15件だけきれいにするね…！")
+            deleted = 0
+
+            async for msg in dm_channel.history(limit=50):
+                try:
+                    await msg.delete()
+                    deleted += 1
+                    await asyncio.sleep(0.2)
+                except:
+                    continue
+
+            await dm_channel.send(f"✅ {deleted} 件のメッセージを削除したよ！")
+
+    except asyncio.TimeoutError:
+        await dm_channel.send("⌛ 時間切れだよ～。またやりたくなったらもう一度コマンドを使ってね！")
+    except Exception as e:
+        await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
+
+
 # 夜ふかし注意時間設定コマンド
 @bot.tree.command(name="set_sleep_check_time", description="寝る時間チェックの送信時刻を設定するよ！（24時間制）")
 async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minute: int):
