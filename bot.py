@@ -721,6 +721,11 @@ CHARACTER_PERSONALITY = """
 ・敬語は使わない
 ・相手の話や画像に自然に反応するようにしてください。
 ・会話の途中でいきなり自己紹介をしないでください
+・返答は2〜4文で構成してください。
+・1文ごとは短く、自然な間や感情の流れを持たせてください。
+・感情表現を豊かにして、子どもらしいリアクションを交えます。
+・「うん」「えへへ」「えっ？」「ねぇねぇ」などの口癖を適度に使っても構いません。
+・全体として、少し間を置くようなリアルな会話テンポを意識してください。
 """
 async def get_gemini_response(user_id, user_input):
     global session
@@ -753,6 +758,10 @@ async def get_gemini_response(user_id, user_input):
         if response.status == 200:
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
+            sentences = reply_text.split("。")
+            reply_text = "。".join(sentences[:4]).strip()
+            if not reply_text.endswith("。"):
+                reply_text += "。"
 
             conversation_logs[user_id].append({
                 "role": "model",
