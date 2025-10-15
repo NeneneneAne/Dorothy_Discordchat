@@ -851,7 +851,7 @@ async def on_message(message):
 
             # 各文を個別メッセージとして送信
             for s in sentences:
-                await message.channel.send(f"{message.author.mention} {s}。")
+                await message.channel.send(f"{message.author.mention} {s}")
                 await asyncio.sleep(1.2)  # 会話テンポを再現
 
         except Exception as e:
@@ -879,7 +879,7 @@ async def on_message(message):
         sentences = [s.strip() for s in sentences if s.strip()]
 
         for s in sentences:
-            await message.channel.send(f"{s}。")
+            await message.channel.send(f"{s}")
             await asyncio.sleep(1.2)
 
     await bot.process_commands(message)
