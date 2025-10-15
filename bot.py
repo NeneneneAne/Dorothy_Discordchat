@@ -763,8 +763,6 @@ async def get_gemini_response(user_id, user_input):
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
             sentences = reply_text.split("。")
             reply_text = "。".join(sentences[:4]).strip()
-            if not reply_text.endswith("。"):
-                reply_text += "。"
 
             conversation_logs[user_id].append({
                 "role": "model",
