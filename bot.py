@@ -812,7 +812,9 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
         else:
             return f"エラー: {response.status} - {await response.text()}"
 
-# DMでメッセージを受信
+# ユーザーごとの「今回メッセージでメンション済み」フラグ
+user_mentioned_this_msg = {}
+
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -821,66 +823,58 @@ async def on_message(message):
     logger.info(f"📩 受信: guild={message.guild.id if message.guild else 'DM'} "
                 f"author={message.author} content={message.content}")
 
-    # --- サーバー内でメンションされたとき ---
-    if (
-        message.guild
-        and message.guild.id in GUILD_IDS
-        and (bot.user.mentioned_in(message) or message.role_mentions)
-    ):
-        
-        image_bytes = None
-        image_mime_type = "image/png"
+    # 添付画像の読み込み
+    image_bytes = None
+    image_mime_type = "image/png"
+    if message.attachments:
+        attachment = message.attachments[0]
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            image_bytes = await attachment.read()
+            image_mime_type = attachment.content_type
 
-        # 添付画像がある場合
-        if message.attachments:
-            attachment = message.attachments[0]
-            if attachment.content_type and attachment.content_type.startswith("image/"):
-                image_bytes = await attachment.read()
-                image_mime_type = attachment.content_type
-
+    # --- サーバーでメンションされた場合だけ ---
+    if message.guild and message.guild.id in GUILD_IDS and bot.user.mentioned_in(message):
         try:
             if image_bytes:
-                response = await get_gemini_response_with_image(
-                    str(message.author.id), message.content, image_bytes, image_mime_type
-                )
+                response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
             else:
                 response = await get_gemini_response(str(message.author.id), message.content)
-            
-            sentences = re.split(r'[。\n]+', response)
-            sentences = [s.strip() for s in sentences if s.strip()]
 
-            # 各文を個別メッセージとして送信
-            for s in sentences:
-                await message.channel.send(f"{message.author.mention} {s}")
-                await asyncio.sleep(1.2)  # 会話テンポを再現
+            import re
+            sentences = [s.strip() for s in re.split(r'[。\n]+', response) if s.strip()]
+
+            # このメッセージでのユーザーへのメンションフラグ
+            mention_first_time = True
+
+            for i, s in enumerate(sentences):
+                if i == 0 and mention_first_time:
+                    await message.channel.send(f"{message.author.mention} {s}")
+                    mention_first_time = False
+                else:
+                    await message.channel.send(s)
+                await asyncio.sleep(1.2)
 
         except Exception as e:
             logger.error(f"❌ メッセージ送信エラー: {e}")
 
-    # --- DMでの会話（従来通り） ---
+    # --- DMの場合 ---
     elif message.guild is None:
-        image_bytes = None
-        image_mime_type = "image/png"
+        try:
+            if image_bytes:
+                response = await get_gemini_response_with_image(str(message.author.id), message.content, image_bytes, image_mime_type)
+                conversation_logs[str(message.author.id)] = []
+            else:
+                response = await get_gemini_response(str(message.author.id), message.content)
 
-        if message.attachments:
-            attachment = message.attachments[0]
-            if attachment.content_type and attachment.content_type.startswith("image/"):
-                image_bytes = await attachment.read()
-                image_mime_type = attachment.content_type
+            import re
+            sentences = [s.strip() for s in re.split(r'[。\n]+', response) if s.strip()]
 
-        if image_bytes:
-            response = await get_gemini_response_with_image(
-                str(message.author.id), message.content, image_bytes, image_mime_type
-            )
-            conversation_logs[str(message.author.id)] = []
-        else:
-            response = await get_gemini_response(str(message.author.id), message.content)
-        sentences = re.split(r'[。\n]+', response)
-        sentences = [s.strip() for s in sentences if s.strip()]
+            for s in sentences:
+                await message.channel.send(s)
+                await asyncio.sleep(1.2)
 
-        for s in sentences:
-            await message.channel.send(f"{s}")
-            await asyncio.sleep(1.2)
+        except Exception as e:
+            logger.error(f"❌ DM送信エラー: {e}")
 
     await bot.process_commands(message)
 
