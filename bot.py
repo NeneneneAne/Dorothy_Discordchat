@@ -848,8 +848,6 @@ async def on_message(message):
             else:
                 response = await get_gemini_response(str(message.author.id), message.content)
             
-            # --- 文を「。」または改行で分割 ---
-            import re
             sentences = re.split(r'[。\n]+', response)
             sentences = [s.strip() for s in sentences if s.strip()]
 
