@@ -13,6 +13,7 @@ import random
 from flask import Flask
 import threading
 import os
+import re
 from discord import app_commands
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -846,8 +847,17 @@ async def on_message(message):
                 )
             else:
                 response = await get_gemini_response(str(message.author.id), message.content)
+            
+            # --- 文を「。」または改行で分割 ---
+            import re
+            sentences = re.split(r'[。\n]+', response)
+            sentences = [s.strip() for s in sentences if s.strip()]
 
-            await message.channel.send(f"{message.author.mention} {response}")
+            # 各文を個別メッセージとして送信
+            for s in sentences:
+                await message.channel.send(f"{message.author.mention} {s}。")
+                await asyncio.sleep(1.2)  # 会話テンポを再現
+
         except Exception as e:
             logger.error(f"❌ メッセージ送信エラー: {e}")
 
@@ -869,8 +879,12 @@ async def on_message(message):
             conversation_logs[str(message.author.id)] = []
         else:
             response = await get_gemini_response(str(message.author.id), message.content)
+        sentences = re.split(r'[。\n]+', response)
+        sentences = [s.strip() for s in sentences if s.strip()]
 
-        await message.channel.send(response)
+        for s in sentences:
+            await message.channel.send(f"{s}。")
+            await asyncio.sleep(1.2)
 
     await bot.process_commands(message)
 
