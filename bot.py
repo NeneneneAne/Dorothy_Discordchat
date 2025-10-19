@@ -57,6 +57,9 @@ HOYOLAB_LTUID = os.getenv("HOYOLAB_LTUID")
 GENSHIN_UID = os.getenv("GENSHIN_UID")       # 自分のUID（例: 812345678）
 GENSHIN_SERVER = os.getenv("GENSHIN_SERVER", "os_asia")  # 日本サーバーは os_asia
 DISCORD_NOTIFY_USER_ID = os.getenv("DISCORD_NOTIFY_USER_ID")
+SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
+SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
+API_URL = "https://api.switch-bot.com/v1.1/devices"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -1235,6 +1238,31 @@ async def resin_check(interaction: discord.Interaction):
         )
     else:
         await interaction.followup.send("❌樹脂のチェック中にエラーが発生したよ～！")
+
+@bot.tree.command(name="tv_power", description="SwitchBot経由でテレビの電源を切り替えるよ！")
+async def tv_power(interaction: discord.Interaction):
+    headers = {
+        "Authorization": SWITCHBOT_TOKEN,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "command": "turnOn",  # SwitchBotではTVのトグル操作に同じ信号を送る
+        "parameter": "default",
+        "commandType": "command"
+    }
+
+    try:
+        res = requests.post(f"{API_URL}/{SWITCHBOT_TV_ID}/commands", json=payload, headers=headers)
+        data = res.json()
+
+        if data.get("statusCode") == 100:
+            await interaction.response.send_message("📺 テレビの電源を切り替えたよ！", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ エラーが発生したよ: {data}", ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ 通信中にエラーが発生したよ: {e}", ephemeral=True)
+
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
