@@ -528,38 +528,39 @@ async def send_notification_message(user_id, info):
 
         base_message = info["message"]
 
-        # 💡 言い方テンプレート（通常通知でも自然な言葉に）
-        prompt_variants = [
-            f"{base_message}だよー！",
-            f"ねぇねぇ、{base_message}の時間だよ！",
-            f"ハニー、{base_message}のこと忘れてないよね？",
-            f"うふふ、そろそろ{base_message}の時間だよ～！",
-            f"今日は{base_message}だね！",
-            f"あたし、{base_message}のことちゃんと覚えてたよ！"
-        ]
-        chosen_prompt = random.choice(prompt_variants)
-
-        # 🎀 Geminiで自然でドロシーらしい文に整形
-        natural_text = await get_gemini_response(
-            user_id,
-            f"次の文章を自然でかわいい一言メッセージにして。"
-            f"話し方は元気で子どもっぽく、優しく話す感じでお願いね: {chosen_prompt}"
+        prompt = (
+            f"{CHARACTER_PERSONALITY}\n\n"
+            f"あなたはDiscordでハニーに通知を送る可愛いAI「ドロシー」です。\n"
+            f"次の文章はハニーが登録した予定や行動（例：お風呂に入る、勉強する、寝るなど）です。\n"
+            f"その内容をもとに、ハニーに自然に声をかけるような一言メッセージを作ってください。\n\n"
+            f"条件:\n"
+            f"・語尾をやわらかく（〜だよ、〜ね、〜よ〜）などにする\n"
+            f"・少しテンション高めで、優しい雰囲気\n"
+            f"・できるだけ自然に通知として成立するようにする\n"
+            f"・短く、1〜2文以内で\n"
+            f"・文章の意味を変えず、自然に言い換える\n\n"
+            f"メッセージ: {base_message}"
         )
 
-        # DM送信
-        await user.send(natural_text)
+        natural_text = await get_gemini_response(user_id, prompt)
 
-        # 🔁 繰り返し設定処理
+        final_message = f"{natural_text}\n\n（予定：{base_message}）"
+
+        await user.send(final_message)
+
         uid = str(user_id)
         if uid in notifications:
             for notif in notifications[uid]:
-                if (notif["date"] == info["date"] and
-                    notif["time"] == info["time"] and
-                    notif["message"] == info["message"]):
-
+                if (
+                    notif["date"] == info["date"]
+                    and notif["time"] == info["time"]
+                    and notif["message"] == info["message"]
+                ):
                     if notif.get("repeat", False):
                         now = datetime.datetime.now(JST)
-                        next_year_date = datetime.datetime.strptime(f"{now.year}-{notif['date']}", "%Y-%m-%d") + datetime.timedelta(days=365)
+                        next_year_date = datetime.datetime.strptime(
+                            f"{now.year}-{notif['date']}", "%Y-%m-%d"
+                        ) + datetime.timedelta(days=365)
                         notif["date"] = next_year_date.strftime("%m-%d")
                     else:
                         notifications[uid].remove(notif)
