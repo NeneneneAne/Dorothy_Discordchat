@@ -400,16 +400,20 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
     await interaction.response.send_message(f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}', ephemeral=True)
     schedule_notifications()
 
-@bot.tree.command(name="add_anniversary", description="毎年通知する誕生日や記念日を登録するよ！")
-async def add_anniversary(interaction: discord.Interaction, date: str, message: str):
+@bot.tree.command(name="add_anniversary", description="誕生日や記念日を登録するよ！（毎年通知）")
+async def add_anniversary(interaction: discord.Interaction, date: str, time: str, message: str):
     """
     毎年同じ日に通知を送る誕生日・記念日登録コマンド。
-    例: /add_anniversary date:05-20 message:ハニーの誕生日！
+    例: /add_anniversary date:05-20 time:09:30 message:ハニーの誕生日！
     """
     try:
         datetime.datetime.strptime(date, "%m-%d")
+        datetime.datetime.strptime(time, "%H:%M")
     except ValueError:
-        await interaction.response.send_message("日付の形式が正しくないよ～！（MM-DD形式で入力してね）", ephemeral=True)
+        await interaction.response.send_message(
+            "日付または時刻の形式が正しくないよ～！（MM-DD / HH:MM 形式で入力してね）",
+            ephemeral=True
+        )
         return
 
     user_id = str(interaction.user.id)
@@ -418,16 +422,16 @@ async def add_anniversary(interaction: discord.Interaction, date: str, message: 
 
     notifications[user_id].append({
         "date": date,
-        "time": "08:30",  # デフォルトで朝9時
+        "time": time,
         "message": message,
-        "repeat": True     # 毎年リピート
+        "repeat": True  # 毎年リピート
     })
 
     save_notifications(notifications)
     schedule_notifications()
 
     await interaction.response.send_message(
-        f"🎉 {date} に毎年「{message}」を通知するように登録したよ！",
+        f"🎉 {date} の {time} に毎年「{message}」を通知するように登録したよ！",
         ephemeral=True
     )
     
