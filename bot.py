@@ -59,6 +59,7 @@ GENSHIN_SERVER = os.getenv("GENSHIN_SERVER", "os_asia")  # 日本サーバーは
 DISCORD_NOTIFY_USER_ID = os.getenv("DISCORD_NOTIFY_USER_ID")
 SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
 SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
+SWITCHBOT_LIGHT_ID = os.getenv("SWITCHBOT_LIGHT_ID")
 API_URL = "https://api.switch-bot.com/v1.1/devices"
 
 SUPABASE_HEADERS = {
@@ -1302,9 +1303,6 @@ async def resin_check(interaction: discord.Interaction):
 
 @bot.tree.command(name="tv_power", description="SwitchBot経由でテレビの電源を切り替えるよ！")
 async def tv_power(interaction: discord.Interaction):
-    SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
-    SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
-    API_URL = "https://api.switch-bot.com/v1.1/devices"
 
     headers = {
         "Authorization": SWITCHBOT_TOKEN,
@@ -1326,6 +1324,60 @@ async def tv_power(interaction: discord.Interaction):
 
         if data.get("statusCode") == 100:
             await interaction.followup.send("📺 テレビの電源を切り替えたよ！", ephemeral=True)
+        else:
+            await interaction.followup.send(f"⚠️ エラーが発生したよ: {data}", ephemeral=True)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ 通信中にエラーが発生したよ: {e}", ephemeral=True)
+
+@bot.tree.command(name="light_on", description="SwitchBot経由で部屋の電気をONにするよ！")
+async def light_on(interaction: discord.Interaction):
+
+    headers = {
+        "Authorization": SWITCHBOT_TOKEN,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "command": "turnOn",
+        "parameter": "default",
+        "commandType": "command"
+    }
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        res = requests.post(f"{API_URL}/{SWITCHBOT_LIGHT_ID}/commands", json=payload, headers=headers, timeout=10)
+        data = res.json()
+
+        if data.get("statusCode") == 100:
+            await interaction.followup.send("💡 部屋の電気をONにしたよ！", ephemeral=True)
+        else:
+            await interaction.followup.send(f"⚠️ エラーが発生したよ: {data}", ephemeral=True)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ 通信中にエラーが発生したよ: {e}", ephemeral=True)
+
+@bot.tree.command(name="light_off", description="SwitchBot経由で部屋の電気をOFFにするよ！")
+async def light_off(interaction: discord.Interaction):
+
+    headers = {
+        "Authorization": SWITCHBOT_TOKEN,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "command": "turnOff",
+        "parameter": "default",
+        "commandType": "command"
+    }
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        res = requests.post(f"{API_URL}/{SWITCHBOT_LIGHT_ID}/commands", json=payload, headers=headers, timeout=10)
+        data = res.json()
+
+        if data.get("statusCode") == 100:
+            await interaction.followup.send("💡 部屋の電気をOFFにしたよ！", ephemeral=True)
         else:
             await interaction.followup.send(f"⚠️ エラーが発生したよ: {data}", ephemeral=True)
 
