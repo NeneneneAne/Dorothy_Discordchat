@@ -399,6 +399,37 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
     save_notifications(notifications)
     await interaction.response.send_message(f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}', ephemeral=True)
     schedule_notifications()
+
+@bot.tree.command(name="add_anniversary", description="毎年通知する誕生日や記念日を登録するよ！")
+async def add_anniversary(interaction: discord.Interaction, date: str, message: str):
+    """
+    毎年同じ日に通知を送る誕生日・記念日登録コマンド。
+    例: /add_anniversary date:05-20 message:ハニーの誕生日！
+    """
+    try:
+        datetime.datetime.strptime(date, "%m-%d")
+    except ValueError:
+        await interaction.response.send_message("日付の形式が正しくないよ～！（MM-DD形式で入力してね）", ephemeral=True)
+        return
+
+    user_id = str(interaction.user.id)
+    if user_id not in notifications:
+        notifications[user_id] = []
+
+    notifications[user_id].append({
+        "date": date,
+        "time": "08:30",  # デフォルトで朝9時
+        "message": message,
+        "repeat": True     # 毎年リピート
+    })
+
+    save_notifications(notifications)
+    schedule_notifications()
+
+    await interaction.response.send_message(
+        f"🎉 {date} に毎年「{message}」を通知するように登録したよ！",
+        ephemeral=True
+    )
     
 # タイマー設定コマンド
 @bot.tree.command(name="set_notification_after", description="○時間○分後に通知を設定するよ！")
@@ -483,13 +514,38 @@ async def remove_notification(interaction: discord.Interaction, index: int):
         ephemeral=True
     )
 
+import random
+
 async def send_notification_message(user_id, info):
     try:
         user = await bot.fetch_user(int(user_id))
-        if user:
-            await user.send(info["message"])
+        if not user:
+            return
 
-        # 送った後、repeatフラグによって処理を分岐
+        base_message = info["message"]
+
+        # 💡 言い方テンプレート（通常通知でも自然な言葉に）
+        prompt_variants = [
+            f"{base_message}だよー！",
+            f"ねぇねぇ、{base_message}の時間だよ！",
+            f"ハニー、{base_message}のこと忘れてないよね？",
+            f"うふふ、そろそろ{base_message}の時間だよ～！",
+            f"今日は{base_message}だね！",
+            f"あたし、{base_message}のことちゃんと覚えてたよ！"
+        ]
+        chosen_prompt = random.choice(prompt_variants)
+
+        # 🎀 Geminiで自然でドロシーらしい文に整形
+        natural_text = await get_gemini_response(
+            user_id,
+            f"次の文章を自然でかわいい一言メッセージにして。"
+            f"話し方は元気で子どもっぽく、優しく話す感じでお願いね: {chosen_prompt}"
+        )
+
+        # DM送信
+        await user.send(natural_text)
+
+        # 🔁 繰り返し設定処理
         uid = str(user_id)
         if uid in notifications:
             for notif in notifications[uid]:
@@ -498,12 +554,10 @@ async def send_notification_message(user_id, info):
                     notif["message"] == info["message"]):
 
                     if notif.get("repeat", False):
-                        # 繰り返しなら → 年を+1して再スケジュール
                         now = datetime.datetime.now(JST)
                         next_year_date = datetime.datetime.strptime(f"{now.year}-{notif['date']}", "%Y-%m-%d") + datetime.timedelta(days=365)
                         notif["date"] = next_year_date.strftime("%m-%d")
                     else:
-                        # 一回きりなら → 通知リストから削除
                         notifications[uid].remove(notif)
 
                     save_notifications(notifications)
@@ -512,6 +566,8 @@ async def send_notification_message(user_id, info):
 
     except discord.NotFound:
         logger.error(f"Error: User with ID {user_id} not found.")
+    except Exception as e:
+        logger.error(f"通知送信中にエラー: {e}")
 
 @bot.tree.command(name="add_daily_todo", description="毎日送信する通知を追加するよ！")
 async def add_daily_todo(interaction: discord.Interaction, message: str):
