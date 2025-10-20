@@ -544,7 +544,7 @@ async def send_notification_message(user_id, info):
 
         natural_text = await get_gemini_response(user_id, prompt)
 
-        final_message = f"{natural_text}\n\n（予定：{base_message}）"
+        final_message = f"{natural_text}\n\n予定：{base_message}"
 
         await user.send(final_message)
 
