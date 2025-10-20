@@ -1241,28 +1241,35 @@ async def resin_check(interaction: discord.Interaction):
 
 @bot.tree.command(name="tv_power", description="SwitchBot経由でテレビの電源を切り替えるよ！")
 async def tv_power(interaction: discord.Interaction):
+    SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
+    SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
+    API_URL = "https://api.switch-bot.com/v1.1/devices"
+
     headers = {
         "Authorization": SWITCHBOT_TOKEN,
         "Content-Type": "application/json"
     }
     payload = {
-        "command": "turnOn",  # SwitchBotではTVのトグル操作に同じ信号を送る
+        "command": "turnOn",  # SwitchBotではトグル信号
         "parameter": "default",
         "commandType": "command"
     }
 
+    # ✅ すぐに応答を返す（Discordタイムアウト防止）
+    await interaction.response.defer(ephemeral=True)
+
     try:
-        res = requests.post(f"{API_URL}/{SWITCHBOT_TV_ID}/commands", json=payload, headers=headers)
+        # SwitchBot API呼び出し
+        res = requests.post(f"{API_URL}/{SWITCHBOT_TV_ID}/commands", json=payload, headers=headers, timeout=10)
         data = res.json()
 
         if data.get("statusCode") == 100:
-            await interaction.response.send_message("📺 テレビの電源を切り替えたよ！", ephemeral=True)
+            await interaction.followup.send("📺 テレビの電源を切り替えたよ！", ephemeral=True)
         else:
-            await interaction.response.send_message(f"⚠️ エラーが発生したよ: {data}", ephemeral=True)
+            await interaction.followup.send(f"⚠️ エラーが発生したよ: {data}", ephemeral=True)
 
     except Exception as e:
-        await interaction.response.send_message(f"❌ 通信中にエラーが発生したよ: {e}", ephemeral=True)
-
+        await interaction.followup.send(f"❌ 通信中にエラーが発生したよ: {e}", ephemeral=True)
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
