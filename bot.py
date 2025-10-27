@@ -406,76 +406,65 @@ async def set_notification(interaction: discord.Interaction, date: str, time: st
 
 @bot.tree.command(name="add_anniversary", description="誕生日や記念日を登録するよ！（毎年通知）")
 async def add_anniversary(interaction: discord.Interaction, date: str, time: str, message: str):
-    """
-    毎年同じ日に通知を送る誕生日・記念日登録コマンド。
-    例: /add_anniversary date:05-20 time:09:30 message:ハニーの誕生日！
-    """
-    try:
-        datetime.datetime.strptime(date, "%m-%d")
-        datetime.datetime.strptime(time, "%H:%M")
-    except ValueError:
-        await interaction.response.send_message(
-            "日付または時刻の形式が正しくないよ～！（MM-DD / HH:MM 形式で入力してね）",
-            ephemeral=True
-        )
-        return
+await interaction.response.defer(ephemeral=True)
 
-    user_id = str(interaction.user.id)
-    if user_id not in notifications:
-        notifications[user_id] = []
+try:
+    datetime.datetime.strptime(date, "%m-%d")
+    datetime.datetime.strptime(time, "%H:%M")
+except ValueError:
+    await interaction.followup.send("日付または時刻の形式が正しくないよ～！（MM-DD / HH:MM 形式で入力してね）", ephemeral=True)
+    return
 
-    notifications[user_id].append({
-        "date": date,
-        "time": time,
-        "message": message,
-        "repeat": True  # 毎年リピート
-    })
+user_id = str(interaction.user.id)
+if user_id not in notifications:
+    notifications[user_id] = []
 
-    save_notifications(notifications)
-    schedule_notifications()
+notifications[user_id].append({
+    "date": date,
+    "time": time,
+    "message": message,
+    "repeat": True  # 毎年リピート
+})
 
-    await interaction.response.send_message(
-        f"🎉 {date} の {time} に毎年「{message}」を通知するように登録したよ！",
-        ephemeral=True
-    )
-    
+save_notifications(notifications)
+schedule_notifications()
+
+await interaction.followup.send(f"🎉 {date} の {time} に毎年「{message}」を通知するように登録したよ！", ephemeral=True)
+
 # タイマー設定コマンド
 @bot.tree.command(name="set_notification_after", description="○時間○分後に通知を設定するよ！")
 async def set_notification_after(interaction: discord.Interaction, hours: int, minutes: int, message: str):
-    if hours < 0 or minutes < 0 or (hours == 0 and minutes == 0):
-        await interaction.response.send_message("⛔ 1分以上後の時間を指定してね～！", ephemeral=True)
-        return
+await interaction.response.defer(ephemeral=True)
 
-    user_id = str(interaction.user.id)
-    now = datetime.datetime.now(JST)
-    future_time = now + datetime.timedelta(hours=hours, minutes=minutes)
+if hours < 0 or minutes < 0 or (hours == 0 and minutes == 0):
+    await interaction.followup.send("⛔ 1分以上後の時間を指定してね～！", ephemeral=True)
+    return
 
-    info = {
-        "date": future_time.strftime("%m-%d"),
-        "time": future_time.strftime("%H:%M"),
-        "message": message,
-        "repeat": False
-    }
+user_id = str(interaction.user.id)
+now = datetime.datetime.now(JST)
+future_time = now + datetime.timedelta(hours=hours, minutes=minutes)
 
-    # 通知データに保存
-    if user_id not in notifications:
-        notifications[user_id] = []
-    notifications[user_id].append(info)
-    save_notifications(notifications)
+info = {
+    "date": future_time.strftime("%m-%d"),
+    "time": future_time.strftime("%H:%M"),
+    "message": message,
+    "repeat": False
+}
 
-    # 通知ジョブを追加（即時スケジューリング）
-    scheduler.add_job(
-        send_notification_message,
-        'date',
-        run_date=future_time,
-        args=[user_id, info],
-        id=f"after_notification_{user_id}_{int(future_time.timestamp())}"  # 一意なID
-    )
+if user_id not in notifications:
+    notifications[user_id] = []
+notifications[user_id].append(info)
+save_notifications(notifications)
 
-    await interaction.response.send_message(
-        f"⏰ {hours}時間{minutes}分後（{future_time.strftime('%H:%M')}）に「{message}」を通知するよ～！",
-        ephemeral=True
-    )
+scheduler.add_job(
+    send_notification_message,
+    'date',
+    run_date=future_time,
+    args=[user_id, info],
+    id=f"after_notification_{user_id}_{int(future_time.timestamp())}"
+)
+
+await interaction.followup.send(f"⏰ {hours}時間{minutes}分後（{future_time.strftime('%H:%M')}）に「{message}」を通知するよ～！", ephemeral=True)
 
 # 通知一覧表示
 @bot.tree.command(name="list_notifications", description="登録してる通知を表示するよ！")
@@ -499,30 +488,19 @@ async def list_notifications(interaction: discord.Interaction):
 # 通知削除
 @bot.tree.command(name="remove_notification", description="特定の通知を削除するよ！")
 async def remove_notification(interaction: discord.Interaction, index: int):
-    user_id = str(interaction.user.id)
-    
-    # ユーザーの通知がなければエラーメッセージを送信
-    if user_id not in notifications or not notifications[user_id] or index < 1 or index > len(notifications[user_id]):
-        await interaction.response.send_message("指定された通知が見つからないよ～", ephemeral=True)
-        return
-    
-    # 通知を削除
-    removed = notifications[user_id].pop(index - 1)
-    
-    # 通知を保存し、スケジュールを更新
-    save_notifications(notifications)
-    schedule_notifications()
+await interaction.response.defer(ephemeral=True)
 
-    # 日付と時刻を除いたメッセージ内容を作成
-    message_content = removed['message']
+user_id = str(interaction.user.id)
+if user_id not in notifications or not notifications[user_id] or index < 1 or index > len(notifications[user_id]):
+    await interaction.followup.send("指定された通知が見つからないよ～", ephemeral=True)
+    return
 
-    # 削除した通知の内容を送信
-    await interaction.response.send_message(
-        f"✅ 「{message_content}」を削除したよ～！",
-        ephemeral=True
-    )
+removed = notifications[user_id].pop(index - 1)
+save_notifications(notifications)
+schedule_notifications()
 
-import random
+message_content = removed['message']
+await interaction.followup.send(f"✅ 「{message_content}」を削除したよ～！", ephemeral=True)
 
 async def send_notification_message(user_id, info):
     try:
@@ -580,12 +558,15 @@ async def send_notification_message(user_id, info):
 
 @bot.tree.command(name="add_daily_todo", description="毎日送信する通知を追加するよ！")
 async def add_daily_todo(interaction: discord.Interaction, message: str):
-    user_id = str(interaction.user.id)
-    if user_id not in daily_notifications:
-        daily_notifications[user_id] = {"todos": [], "time": {"hour": 8, "minute": 0}}  # デフォルト8:00
-    daily_notifications[user_id]["todos"].append(message)
-    save_daily_notifications(daily_notifications)
-    await interaction.response.send_message(f'✅ "{message}" って毎日通知するね～！', ephemeral=True)
+await interaction.response.defer(ephemeral=True)
+
+user_id = str(interaction.user.id)
+if user_id not in daily_notifications:
+    daily_notifications[user_id] = {"todos": [], "time": {"hour": 8, "minute": 0}}  # デフォルト8:00
+
+daily_notifications[user_id]["todos"].append(message)
+save_daily_notifications(daily_notifications)
+await interaction.followup.send(f'✅ "{message}" って毎日通知するね～！', ephemeral=True)
 
 @bot.tree.command(name="list_daily_todos", description="毎日送るTodoリストを確認するよ！")
 async def list_daily_todos(interaction: discord.Interaction):
@@ -604,173 +585,156 @@ async def list_daily_todos(interaction: discord.Interaction):
 
 @bot.tree.command(name="remove_daily_todo", description="Todoを削除するよ！")
 async def remove_daily_todo(interaction: discord.Interaction, index: int):
-    user_id = str(interaction.user.id)
-    user_data = daily_notifications.get(user_id)
+await interaction.response.defer(ephemeral=True)
 
-    if not user_data or index < 1 or index > len(user_data.get("todos", [])):
-        await interaction.response.send_message("指定されたTodoが見つからなかったよ～！", ephemeral=True)
-        return
+user_id = str(interaction.user.id)
+user_data = daily_notifications.get(user_id)
 
-    removed = user_data["todos"].pop(index - 1)
-    save_daily_notifications(daily_notifications)
-    await interaction.response.send_message(f"✅ 「{removed}」を削除したよ～！", ephemeral=True)
+if not user_data or index < 1 or index > len(user_data.get("todos", [])):
+    await interaction.followup.send("指定されたTodoが見つからなかったよ～！", ephemeral=True)
+    return
+
+removed = user_data["todos"].pop(index - 1)
+save_daily_notifications(daily_notifications)
+await interaction.followup.send(f"✅ 「{removed}」を削除したよ～！", ephemeral=True)
 
 @bot.tree.command(name="set_daily_time", description="毎日Todo通知を送る時間を設定するよ！（24時間制）")
 async def set_daily_time(interaction: discord.Interaction, hour: int, minute: int):
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        await interaction.response.send_message("⛔ 時間の形式が正しくないよ！(0-23時, 0-59分)", ephemeral=True)
-        return
+await interaction.response.defer(ephemeral=True)
 
-    user_id = str(interaction.user.id)
-    if user_id not in daily_notifications:
-        daily_notifications[user_id] = {"todos": [], "time": {"hour": hour, "minute": minute}}
-    else:
-        daily_notifications[user_id]["time"] = {"hour": hour, "minute": minute}
-    save_daily_notifications(daily_notifications)
+if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+    await interaction.followup.send("⛔ 時間の形式が正しくないよ！(0-23時, 0-59分)", ephemeral=True)
+    return
 
-    schedule_daily_todos()  # ← これを追加
+user_id = str(interaction.user.id)
+if user_id not in daily_notifications:
+    daily_notifications[user_id] = {"todos": [], "time": {"hour": hour, "minute": minute}}
+else:
+    daily_notifications[user_id]["time"] = {"hour": hour, "minute": minute}
 
-    await interaction.response.send_message(f"✅ 毎日 {hour:02d}:{minute:02d} に通知するように設定したよ！", ephemeral=True)
+save_daily_notifications(daily_notifications)
+schedule_daily_todos()
+
+await interaction.followup.send(f"✅ 毎日 {hour:02d}:{minute:02d} に通知するように設定したよ！", ephemeral=True)
 
 # 指定メッセージ削除
 @bot.tree.command(name="delete_message", description="指定したメッセージIDのメッセージを削除するよ～！")
 async def delete_message(interaction: discord.Interaction, message_id: str):
-    try:
-        user = await bot.fetch_user(interaction.user.id)
-        if user:
-            dm_channel = await user.create_dm()
-            msg = await dm_channel.fetch_message(int(message_id))
-            await msg.delete()
-            await interaction.response.send_message("✅ 指定したメッセージを削除したよ～！", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ メッセージを削除できなかったよ～！", ephemeral=True)
-    except discord.NotFound:
-        await interaction.response.send_message("❌ 指定したメッセージが見つからなかったよ～！", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("❌ メッセージを削除する権限がないよ～！", ephemeral=True)
-    except ValueError:
-        await interaction.response.send_message("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
+await interaction.response.defer(ephemeral=True)
+
+try:
+    user = await bot.fetch_user(interaction.user.id)
+    if user:
+        dm_channel = await user.create_dm()
+        msg = await dm_channel.fetch_message(int(message_id))
+        await msg.delete()
+        await interaction.followup.send("✅ 指定したメッセージを削除したよ～！", ephemeral=True)
+    else:
+        await interaction.followup.send("❌ メッセージを削除できなかったよ～！", ephemeral=True)
+except discord.NotFound:
+    await interaction.followup.send("❌ 指定したメッセージが見つからなかったよ～！", ephemeral=True)
+except discord.Forbidden:
+    await interaction.followup.send("❌ メッセージを削除する権限がないよ～！", ephemeral=True)
+except ValueError:
+    await interaction.followup.send("❌ メッセージIDは数字で入力してね～！", ephemeral=True)
 
 @bot.tree.command(name="reset_dm_system", description="ドロシーとのDM履歴を全部削除するよ～！")
 async def reset_dm_system(interaction: discord.Interaction):
-    # サーバーで実行されたら拒否
-    if interaction.guild:
-        await interaction.response.send_message("❌ このコマンドはDM専用だよ～！", ephemeral=True)
+if interaction.guild:
+await interaction.response.send_message("❌ このコマンドはDM専用だよ～！", ephemeral=True)
+return
+
+await interaction.response.defer(ephemeral=True)
+dm_channel = interaction.channel
+
+if not isinstance(dm_channel, discord.DMChannel):
+    await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
+    return
+
+await dm_channel.send("⚠️ 本当にドロシーとのDM履歴を全部削除していい？（Y/N）")
+
+def check(msg: discord.Message):
+    return msg.author == interaction.user and msg.channel == dm_channel and msg.content.strip().lower() in ["y", "n"]
+
+try:
+    reply = await bot.wait_for("message", check=check, timeout=60.0)
+    answer = reply.content.strip().lower()
+
+    if answer == "n":
+        await dm_channel.send("🛑 わかった！削除はやめておくね！")
         return
-
-    await interaction.response.defer(ephemeral=True)
-
-    dm_channel = interaction.channel
-    if not isinstance(dm_channel, discord.DMChannel):
-        await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
-        return
-
-    # 確認メッセージ
-    await dm_channel.send("⚠️ 本当にドロシーとのDM履歴を全部削除していい？（Y/N）")
-
-    def check(msg: discord.Message):
-        return (
-            msg.author == interaction.user
-            and msg.channel == dm_channel
-            and msg.content.strip().lower() in ["y", "n"]
-        )
-
-    try:
-        # ユーザーの返信を待機（60秒以内）
-        reply = await bot.wait_for("message", check=check, timeout=60.0)
-        answer = reply.content.strip().lower()
-
-        if answer == "n":
-            await dm_channel.send("🛑 わかった！削除はやめておくね！")
-            return
-
-        elif answer == "y":
-            await dm_channel.send("🧹 じゃあ全部きれいにするね…！")
-            deleted = 0
-
-            async for msg in dm_channel.history(limit=None):
-                try:
-                    await msg.delete()
-                    deleted += 1
-                    await asyncio.sleep(0.2)  # レート制限対策
-                except:
-                    continue
-
-            await dm_channel.send(f"✅ {deleted} 件のメッセージを削除したよ！")
-
-    except asyncio.TimeoutError:
-        await dm_channel.send("⌛ 時間切れだよ～。またやりたくなったらもう一度コマンドを使ってね！")
-    except Exception as e:
-        await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
+    elif answer == "y":
+        await dm_channel.send("🧹 じゃあ全部きれいにするね…！")
+        deleted = 0
+        async for msg in dm_channel.history(limit=None):
+            try:
+                await msg.delete()
+                deleted += 1
+                await asyncio.sleep(0.2)
+            except:
+                continue
+        await dm_channel.send(f"✅ {deleted} 件のメッセージを削除したよ！")
+except asyncio.TimeoutError:
+    await dm_channel.send("⌛ 時間切れだよ～。またやりたくなったらもう一度コマンドを使ってね！")
+except Exception as e:
+    await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
 
 @bot.tree.command(name="clear_message_15", description="ドロシーとのDM履歴を直近15件だけ削除するよ～！")
-async def clear_last_50(interaction: discord.Interaction):
-    # サーバー内では実行できない
-    if interaction.guild:
-        await interaction.response.send_message("❌ このコマンドはDM専用だよ～！", ephemeral=True)
+async def clear_last_15(interaction: discord.Interaction):
+if interaction.guild:
+await interaction.response.send_message("❌ このコマンドはDM専用だよ～！", ephemeral=True)
+return
+
+await interaction.response.defer(ephemeral=True)
+dm_channel = interaction.channel
+
+if not isinstance(dm_channel, discord.DMChannel):
+    await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
+    return
+
+await dm_channel.send("⚠️ 直近15件のメッセージを削除していい？（Y/N）")
+
+def check(msg: discord.Message):
+    return msg.author == interaction.user and msg.channel == dm_channel and msg.content.strip().lower() in ["y", "n"]
+
+try:
+    reply = await bot.wait_for("message", check=check, timeout=60.0)
+    answer = reply.content.strip().lower()
+
+    if answer == "n":
+        await dm_channel.send("🛑 わかった！削除はやめておくね！")
         return
+    elif answer == "y":
+        await dm_channel.send("🧹 15件だけきれいにするね…！")
+        deleted = 0
+        async for msg in dm_channel.history(limit=15):
+            try:
+                await msg.delete()
+                deleted += 1
+                await asyncio.sleep(0.2)
+            except:
+                continue
+        await dm_channel.send(f"✅ {deleted} 件のメッセージを削除したよ！")
+except asyncio.TimeoutError:
+    await dm_channel.send("⌛ 時間切れだよ～。またやりたくなったらもう一度コマンドを使ってね！")
+except Exception as e:
+    await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
 
-    await interaction.response.defer(ephemeral=True)
-
-    dm_channel = interaction.channel
-    if not isinstance(dm_channel, discord.DMChannel):
-        await interaction.followup.send("❌ このコマンドはDMでしか使えないよ～！", ephemeral=True)
-        return
-
-    # 削除前に確認
-    await dm_channel.send("⚠️ 直近15件のメッセージを削除していい？（Y/N）")
-
-    def check(msg: discord.Message):
-        return (
-            msg.author == interaction.user
-            and msg.channel == dm_channel
-            and msg.content.strip().lower() in ["y", "n"]
-        )
-
-    try:
-        reply = await bot.wait_for("message", check=check, timeout=60.0)
-        answer = reply.content.strip().lower()
-
-        if answer == "n":
-            await dm_channel.send("🛑 わかった！削除はやめておくね！")
-            return
-
-        elif answer == "y":
-            await dm_channel.send("🧹 15件だけきれいにするね…！")
-            deleted = 0
-
-            async for msg in dm_channel.history(limit=50):
-                try:
-                    await msg.delete()
-                    deleted += 1
-                    await asyncio.sleep(0.2)
-                except:
-                    continue
-
-            await dm_channel.send(f"✅ {deleted} 件のメッセージを削除したよ！")
-
-    except asyncio.TimeoutError:
-        await dm_channel.send("⌛ 時間切れだよ～。またやりたくなったらもう一度コマンドを使ってね！")
-    except Exception as e:
-        await dm_channel.send(f"⚠️ エラーが起きちゃった！: {e}")
-
-
-# 夜ふかし注意時間設定コマンド
 @bot.tree.command(name="set_sleep_check_time", description="寝る時間チェックの送信時刻を設定するよ！（24時間制）")
 async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minute: int):
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        await interaction.response.send_message("⛔ 時間の形式が正しくないよ！(0-23時, 0-59分)", ephemeral=True)
-        return
+await interaction.response.defer(ephemeral=True)
 
-    user_id = str(interaction.user.id)
-    sleep_check_times[user_id] = {"hour": hour, "minute": minute}
-    save_sleep_check_times(sleep_check_times)
+if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+    await interaction.followup.send("⛔ 時間の形式が正しくないよ！(0-23時, 0-59分)", ephemeral=True)
+    return
 
-    schedule_sleep_check()  # ← 関数名を修正（sなし）
+user_id = str(interaction.user.id)
+sleep_check_times[user_id] = {"hour": hour, "minute": minute}
+save_sleep_check_times(sleep_check_times)
+schedule_sleep_check()
 
-    await interaction.response.send_message(f"✅ 毎日 {hour:02d}:{minute:02d} に寝たほうがいいよ～メッセージを送るようにしたよ！", ephemeral=True)
+await interaction.followup.send(f"✅ 毎日 {hour:02d}:{minute:02d} に寝たほうがいいよ～メッセージを送るようにしたよ！", ephemeral=True)
 
-# Gemini APIを使った会話
 CHARACTER_PERSONALITY = """
 設定:
 ・あなたの名前は「ドロシー」です
@@ -1063,66 +1027,76 @@ async def check_user_sleep_status(user_id: str):
 
 @bot.tree.command(name="add_chat_target", description="ランダム会話の対象に登録するよ！")
 async def add_chat_target(interaction: discord.Interaction, user: discord.User):
-    global chat_targets
-    uid = str(user.id)
-    if uid not in chat_targets:
-        chat_targets.append(uid)
-        save_chat_targets(chat_targets)
-        await interaction.response.send_message(f"✅ {user.name} を会話対象に追加したよ！", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"ℹ️ {user.name} はすでに登録されてるよ！", ephemeral=True)
+await interaction.response.defer(ephemeral=True)
+
+global chat_targets
+uid = str(user.id)
+
+if uid not in chat_targets:
+    chat_targets.append(uid)
+    save_chat_targets(chat_targets)
+    await interaction.followup.send(f"✅ {user.name} を会話対象に追加したよ！", ephemeral=True)
+else:
+    await interaction.followup.send(f"ℹ️ {user.name} はすでに登録されてるよ！", ephemeral=True)
 
 @bot.tree.command(name="remove_chat_target", description="ランダム会話の対象から削除するよ！")
 async def remove_chat_target(interaction: discord.Interaction, user: discord.User):
-    global chat_targets
-    uid = str(user.id)
-    if uid in chat_targets:
-        chat_targets.remove(uid)
-        save_chat_targets(chat_targets)
-        await interaction.response.send_message(f"✅ {user.name} を会話対象から外したよ！", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"ℹ️ {user.name} は登録されてないよ！", ephemeral=True)
+await interaction.response.defer(ephemeral=True)
+
+global chat_targets
+uid = str(user.id)
+
+if uid in chat_targets:
+    chat_targets.remove(uid)
+    save_chat_targets(chat_targets)
+    await interaction.followup.send(f"✅ {user.name} を会話対象から外したよ！", ephemeral=True)
+else:
+    await interaction.followup.send(f"ℹ️ {user.name} は登録されてないよ！", ephemeral=True)
 
 @bot.tree.command(name="list_chat_targets", description="ランダム会話の対象ユーザーを表示するよ！")
 async def list_chat_targets(interaction: discord.Interaction):
-    if not chat_targets:
-        await interaction.response.send_message("📭 登録されてる対象はいないよ～", ephemeral=True)
-        return
-    names = []
-    for uid in chat_targets:
-        try:
-            user = await bot.fetch_user(int(uid))
-            names.append(user.name)
-        except:
-            names.append(f"(ID: {uid})")
-    await interaction.response.send_message("🎯 ランダム会話対象:\n" + "\n".join(names), ephemeral=True)
+await interaction.response.defer(ephemeral=True)
+
+if not chat_targets:
+    await interaction.followup.send("📭 登録されてる対象はいないよ～", ephemeral=True)
+    return
+
+names = []
+for uid in chat_targets:
+    try:
+        user = await bot.fetch_user(int(uid))
+        names.append(user.name)
+    except:
+        names.append(f"(ID: {uid})")
+
+await interaction.followup.send("🎯 ランダム会話対象:\n" + "\n".join(names), ephemeral=True)
 
 @bot.tree.command(name="test_random_chat", description="ランダム会話送信を今すぐテストするよ！")
 async def test_random_chat(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+await interaction.response.defer(ephemeral=True)
 
-    try:
-        if not chat_targets:
-            await interaction.followup.send("📭 ランダム会話の対象がいないよ～！", ephemeral=True)
-            return
+try:
+    if not chat_targets:
+        await interaction.followup.send("📭 ランダム会話の対象がいないよ～！", ephemeral=True)
+        return
 
-        user_id = random.choice(chat_targets)
-        user = await bot.fetch_user(int(user_id))
-        if not user:
-            await interaction.followup.send(f"⚠️ ユーザー {user_id} が見つからなかったよ！", ephemeral=True)
-            return
+    user_id = random.choice(chat_targets)
+    user = await bot.fetch_user(int(user_id))
+    if not user:
+        await interaction.followup.send(f"⚠️ ユーザー {user_id} が見つからなかったよ！", ephemeral=True)
+        return
 
-        prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
-        message = await get_gemini_response(user_id, prompt)
+    prompt = "ハニーに話しかけるための、かわいくて短い会話のきっかけをひとつ作って。例:「おはなししようよ～」"
+    message = await get_gemini_response(user_id, prompt)
 
-        await user.send(message)
-        await interaction.followup.send(f"✅ {user.name} にテストメッセージを送ったよ！", ephemeral=True)
+    await user.send(message)
+    await interaction.followup.send(f"✅ {user.name} にテストメッセージを送ったよ！", ephemeral=True)
 
-    except discord.Forbidden:
-        await interaction.followup.send("❌ DMが拒否されてるみたい。送れなかったよ！", ephemeral=True)
+except discord.Forbidden:
+    await interaction.followup.send("❌ DMが拒否されてるみたい。送れなかったよ！", ephemeral=True)
 
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ エラーが起きたよ: {e}", ephemeral=True)
+except Exception as e:
+    await interaction.followup.send(f"⚠️ エラーが起きたよ: {e}", ephemeral=True)
 
 async def send_random_chat():
     try:
