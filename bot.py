@@ -376,7 +376,43 @@ async def on_resumed():
     schedule_sleep_check()
     schedule_random_chats()
     schedule_resin_check()
-    
+
+@bot.tree.command(name="set_notification", description="通知を設定するよ～！")
+async def set_notification(
+    interaction: discord.Interaction,
+    date: str,
+    time: str,
+    message: str,
+    repeat: bool = False
+):
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        datetime.datetime.strptime(date, "%m-%d")
+        datetime.datetime.strptime(time, "%H:%M")
+    except ValueError:
+        await interaction.followup.send("日付か時刻の形式が正しくないよ～！", ephemeral=True)
+        return
+
+    user_id = str(interaction.user.id)
+    if user_id not in notifications:
+        notifications[user_id] = []
+
+    notifications[user_id].append({
+        "date": date,
+        "time": time,
+        "message": message,
+        "repeat": repeat
+    })
+
+    save_notifications(notifications)
+    schedule_notifications()
+
+    await interaction.followup.send(
+        f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}',
+        ephemeral=True
+    )
+
 # 通知設定コマンド
 @bot.tree.command(name="add_anniversary", description="誕生日や記念日を登録するよ！（毎年通知）")
 async def add_anniversary(interaction: discord.Interaction, date: str, time: str, message: str):
