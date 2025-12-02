@@ -477,7 +477,7 @@ async def set_notification_after(interaction: discord.Interaction, hours: int, m
         send_notification_message,
         'date',
         run_date=future_time,
-        args=[user_id, info],
+        args=[user_id, info.copy()],
         id=f"after_notification_{user_id}_{int(future_time.timestamp())}"
     )
 
@@ -965,7 +965,7 @@ def schedule_notifications():
                     send_notification_message, 
                     'date', 
                     run_date=notification_time, 
-                    args=[user_id, info],
+                    args=[user_id, info.copy()],
                     id=f"notification_{user_id}_{i}" 
                 )
             except ValueError:
