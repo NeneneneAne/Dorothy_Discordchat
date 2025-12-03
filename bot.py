@@ -560,18 +560,21 @@ async def send_notification_message(user_id, info):
 
         uid = str(user_id)
         if uid in notifications:
+
             for notif in notifications[uid]:
                 if (
                     notif["date"] == info["date"]
                     and notif["time"] == info["time"]
                     and notif["message"] == info["message"]
                 ):
+
                     if notif.get("repeat", False):
                         now = datetime.datetime.now(JST)
                         next_year_date = datetime.datetime.strptime(
                             f"{now.year}-{notif['date']}", "%Y-%m-%d"
                         ) + datetime.timedelta(days=365)
                         notif["date"] = next_year_date.strftime("%m-%d")
+
                     else:
                         notifications[uid].remove(notif)
 
