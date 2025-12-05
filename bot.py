@@ -3,6 +3,7 @@ import requests
 import aiohttp
 import json
 import time
+import uuid
 import datetime
 import pytz
 import base64
@@ -462,6 +463,7 @@ async def set_notification_after(interaction: discord.Interaction, hours: int, m
     future_time = now + datetime.timedelta(hours=hours, minutes=minutes)
 
     info = {
+        "id": str(uuid.uuid4()),
         "date": future_time.strftime("%m-%d"),
         "time": future_time.strftime("%H:%M"),
         "message": message,
@@ -562,11 +564,7 @@ async def send_notification_message(user_id, info):
         if uid in notifications:
 
             for notif in notifications[uid]:
-                if (
-                    notif["date"] == info["date"]
-                    and notif["time"] == info["time"]
-                    and notif["message"] == info["message"]
-                ):
+                if notif.get("id") == info.get("id"):
 
                     if notif.get("repeat", False):
                         now = datetime.datetime.now(JST)
