@@ -555,7 +555,7 @@ async def send_notification_message(user_id, info):
             f"メッセージ: {base_message}"
         )
 
-        natural_text = await get_gemini_response(user_id, prompt)
+        natural_text = await get_gemini_response_no_history(prompt)
 
         final_message = f"{natural_text}\n\n予定：{base_message}"
 
@@ -849,6 +849,27 @@ async def get_gemini_response(user_id, user_input):
                 return "⚠️ 今はおしゃべりの回数が上限に達しちゃったみたい！明日また話そうね～！"
             else:
                 return f"⚠️ ごめんね、うまくお返事できなかったよ～！（{response.status}）"
+
+async def get_gemini_response_no_history(prompt):
+    global session
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    headers = {"Content-Type": "application/json"}
+    params = {"key": GEMINI_API_KEY}
+
+    data = {
+        "contents": [
+            {"role": "user", "parts": [{"text": prompt}]}
+        ]
+    }
+
+    async with session.post(url, headers=headers, params=params, json=data) as response:
+        if response.status == 200:
+            response_json = await response.json()
+            reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            return reply_text
+        else:
+            return f"エラー: {response.status}"
 
 async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, image_mime_type="image/png"):
     global session
