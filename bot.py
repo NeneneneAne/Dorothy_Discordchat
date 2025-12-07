@@ -435,6 +435,7 @@ async def add_anniversary(interaction: discord.Interaction, date: str, time: str
         notifications[user_id] = []
 
     notifications[user_id].append({
+        "id": str(uuid.uuid4()),
         "date": date,
         "time": time,
         "message": message,
