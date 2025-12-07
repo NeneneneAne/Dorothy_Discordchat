@@ -400,6 +400,7 @@ async def set_notification(
         notifications[user_id] = []
 
     notifications[user_id].append({
+        "id": str(uuid.uuid4()),
         "date": date,
         "time": time,
         "message": message,
