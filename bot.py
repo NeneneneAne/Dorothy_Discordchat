@@ -400,6 +400,55 @@ async def on_ready():
     except Exception as e:
         logger.error(f"エラー: {e}")
 
+@bot.tree.command(name="fix_duplicates", description="重複してしまった通知データを整理して修復するよ！")
+async def fix_duplicates(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    
+    # 1. 重複のないきれいなデータをメモリに確保（load_notifications修正が必須）
+    # load_notifications() はグローバル変数 notifications を使わないように修正されているので、一時的な変数で受け取る
+    url = f"{SUPABASE_URL}/rest/v1/notifications?select=*"
+    response = requests.get(url, headers=SUPABASE_HEADERS)
+    clean_data_list = []
+    seen_ids = set()
+
+    if response.status_code == 200:
+        for row in response.json():
+            if row["id"] is None or row["id"] in seen_ids:
+                continue
+            seen_ids.add(row["id"])
+            clean_data_list.append({
+                "id": row["id"],
+                "user_id": row["user_id"],
+                "date": row["date"],
+                "time": row["time"],
+                "message": row["message"],
+                "repeat": row.get("repeat", False)
+            })
+    
+    if not clean_data_list:
+        await interaction.followup.send("データベースに通知データがないよ！お掃除する必要もないね🧹", ephemeral=True)
+        return
+
+    await interaction.followup.send("🧹 データベースのお掃除を始めるよ～！重複データを削除して再登録するね…", ephemeral=True)
+    
+    # 2. Supabase上の全データを一旦削除
+    requests.delete(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS)
+    
+    # 3. 重複のないきれいなデータだけを一括で再登録
+    save_url = f"{SUPABASE_URL}/rest/v1/notifications"
+    requests.post(save_url, headers=SUPABASE_HEADERS, json=clean_data_list)
+    
+    # 4. グローバル変数とスケジュールを更新
+    global notifications
+    notifications = load_notifications() # load_notificationsを呼び出してメモリ上のデータも更新
+    schedule_notifications()
+
+    await interaction.followup.send(
+        f"✅ お掃除完了！ {len(clean_data_list)} 件のデータを整理したよ！\n"
+        f"⚠️ **重要:** 次のステップで **Supabaseの `id` カラムに「Primary Key」を設定** してね！", 
+        ephemeral=True
+    )
+
 @bot.event
 async def on_resumed():
     logger.error("⚡ Botが再接続したよ！スケジュールを立て直すね！")
