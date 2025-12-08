@@ -162,11 +162,16 @@ def load_notifications():
     response = requests.get(url, headers=SUPABASE_HEADERS)
     if response.status_code == 200:
         result = {}
-        seen_ids = set() # 重複チェック用のセット
+        seen_ids = set() 
         
         for row in response.json():
+
+            if row.get("id") is None:
+                row["id"] = str(uuid.uuid4())
+
             if row["id"] in seen_ids:
                 continue
+                
             seen_ids.add(row["id"])
 
             result.setdefault(row['user_id'], []).append({
@@ -180,11 +185,12 @@ def load_notifications():
     return {}
 
 def save_notifications(notifications):
-    python_ids = {item["id"] for items in notifications.values() for item in items}
+
+    python_ids = {item["id"] for items in notifications.values() for item in items if item.get("id") is not None}
 
     url = f"{SUPABASE_URL}/rest/v1/notifications?select=id"
     existing = requests.get(url, headers=SUPABASE_HEADERS).json()
-    supabase_ids = {row["id"] for row in existing}
+    supabase_ids = {row["id"] for row in existing if row.get("id") is not None}
 
     delete_ids = supabase_ids - python_ids
 
@@ -193,12 +199,17 @@ def save_notifications(notifications):
             del_url = f"{SUPABASE_URL}/rest/v1/notifications?id=eq.{delete_id}"
             requests.delete(del_url, headers=SUPABASE_HEADERS)
 
+
     all_rows = []
     for user_id, items in notifications.items():
         for item in items:
+
+            if item.get("id") is None:
+                item["id"] = str(uuid.uuid4())
+                
             all_rows.append({
                 "id": item["id"],
-                "user_id": user_id,
+                "user_id": user_id, 
                 "date": item["date"],
                 "time": item["time"],
                 "message": item["message"],
@@ -209,11 +220,11 @@ def save_notifications(notifications):
         return
 
     upsert_headers = SUPABASE_HEADERS.copy()
-    upsert_headers["Prefer"] = "resolution=merge-duplicates"
+    upsert_headers["Prefer"] = "resolution=merge-duplicates" 
 
     url = f"{SUPABASE_URL}/rest/v1/notifications?on_conflict=id"
     requests.post(url, headers=upsert_headers, json=all_rows)
-
+    
 notifications = load_notifications()
 
 def load_daily_notifications():
