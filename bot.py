@@ -164,6 +164,7 @@ def load_notifications():
         result = {}
         for row in response.json():
             result.setdefault(row['user_id'], []).append({
+                "id": row["id"],
                 "date": row["date"],
                 "time": row["time"],
                 "message": row["message"],
@@ -181,6 +182,7 @@ def save_notifications(notifications):
         insert_data = []
         for item in items:
             insert_data.append({
+                "id": row["id"],
                 "user_id": user_id,
                 "date": item["date"],
                 "time": item["time"],
