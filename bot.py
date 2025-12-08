@@ -174,14 +174,24 @@ def load_notifications():
     return {}
 
 def save_notifications(notifications):
-    for user_id, items in notifications.items():
-        # まずそのユーザーの通知だけ削除
-        url = f"{SUPABASE_URL}/rest/v1/notifications?user_id=eq.{user_id}"
-        requests.delete(url, headers=SUPABASE_HEADERS)
 
-        insert_data = []
+    python_ids = {item["id"] for items in notifications.values() for item in items}
+
+    url = f"{SUPABASE_URL}/rest/v1/notifications?select=id"
+    existing = requests.get(url, headers=SUPABASE_HEADERS).json()
+    supabase_ids = {row["id"] for row in existing}
+
+    delete_ids = supabase_ids - python_ids
+
+    if delete_ids:
+        for delete_id in delete_ids:
+            del_url = f"{SUPABASE_URL}/rest/v1/notifications?id=eq.{delete_id}"
+            requests.delete(del_url, headers=SUPABASE_HEADERS)
+
+    all_rows = []
+    for user_id, items in notifications.items():
         for item in items:
-            insert_data.append({
+            all_rows.append({
                 "id": item["id"],
                 "user_id": user_id,
                 "date": item["date"],
@@ -190,12 +200,12 @@ def save_notifications(notifications):
                 "repeat": item.get("repeat", False)
             })
 
-        if insert_data:
-            requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS, json=insert_data)
+    if not all_rows:
+        return
 
-notifications = load_notifications()
+    url = f"{SUPABASE_URL}/rest/v1/notifications?on_conflict=id"
+    requests.post(url, headers=SUPABASE_HEADERS, json=all_rows)
 
-# ← 毎日通知
 def load_daily_notifications():
     url = f"{SUPABASE_URL}/rest/v1/daily_notifications?select=*"
     response = requests.get(url, headers=SUPABASE_HEADERS)
@@ -502,7 +512,6 @@ async def set_notification_after(interaction: discord.Interaction, hours: int, m
     )
 
 
-# 通知一覧表示
 @bot.tree.command(name="list_notifications", description="登録してる通知を表示するよ！")
 async def list_notifications(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
@@ -513,10 +522,16 @@ async def list_notifications(interaction: discord.Interaction):
         await interaction.followup.send("登録されてる通知はないよ～", ephemeral=True)
         return
 
+    sorted_list = sorted(
+        notifications[user_id],
+        key=lambda n: (n["date"], n["time"], n["id"])
+    )
+
     notif_texts = [
-        f"{i+1}️⃣ 📅 {n['date']} ⏰ {n['time']} - {n['message']}"
-        for i, n in enumerate(notifications[user_id])
+        f"{i+1} : {n['date']} / {n['time']} - {n['message']}"
+        for i, n in enumerate(sorted_list)
     ]
+
     full_text = "\n".join(notif_texts)
 
     if len(full_text) > 1900:
@@ -527,23 +542,31 @@ async def list_notifications(interaction: discord.Interaction):
     else:
         await interaction.followup.send(full_text, ephemeral=True)
 
-
 # 通知削除
 @bot.tree.command(name="remove_notification", description="特定の通知を削除するよ！")
 async def remove_notification(interaction: discord.Interaction, index: int):
     await interaction.response.defer(ephemeral=True)
 
     user_id = str(interaction.user.id)
+
+    # 通知が存在しない、または index が不正
     if user_id not in notifications or not notifications[user_id] or index < 1 or index > len(notifications[user_id]):
         await interaction.followup.send("指定された通知が見つからないよ～", ephemeral=True)
         return
 
     removed = notifications[user_id].pop(index - 1)
+    removed_id = removed["id"]
+
+    del_url = f"{SUPABASE_URL}/rest/v1/notifications?id=eq.{removed_id}"
+    requests.delete(del_url, headers=SUPABASE_HEADERS)
+
     save_notifications(notifications)
     schedule_notifications()
 
-    message_content = removed['message']
-    await interaction.followup.send(f"✅ 「{message_content}」を削除したよ～！", ephemeral=True)
+    await interaction.followup.send(
+        f"🗑️ 「{removed['message']}」の通知を削除したよ～！",
+        ephemeral=True
+    )
 
 async def send_notification_message(user_id, info):
     try:
