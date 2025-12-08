@@ -388,6 +388,7 @@ async def set_notification(
     message: str,
     repeat: bool = False
 ):
+    
     await interaction.response.defer(ephemeral=True)
 
     try:
@@ -397,25 +398,33 @@ async def set_notification(
         await interaction.followup.send("日付か時刻の形式が正しくないよ～！", ephemeral=True)
         return
 
-    user_id = str(interaction.user.id)
-    if user_id not in notifications:
-        notifications[user_id] = []
-
-    notifications[user_id].append({
-        "id": str(uuid.uuid4()),
-        "date": date,
-        "time": time,
-        "message": message,
-        "repeat": repeat
-    })
-
-    save_notifications(notifications)
-    schedule_notifications()
-
     await interaction.followup.send(
-        f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}',
-        ephemeral=True
+        f"⏳ 通知を登録中…ちょっと待ってね！", ephemeral=True
     )
+
+    async def background_task():
+        user_id = str(interaction.user.id)
+
+        if user_id not in notifications:
+            notifications[user_id] = []
+
+        notifications[user_id].append({
+            "id": str(uuid.uuid4()),
+            "date": date,
+            "time": time,
+            "message": message,
+            "repeat": repeat
+        })
+
+        save_notifications(notifications)
+        schedule_notifications()
+
+        await interaction.followup.send(
+            f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}',
+            ephemeral=True
+        )
+        
+    asyncio.create_task(background_task())
 
 # 通知設定コマンド
 @bot.tree.command(name="add_anniversary", description="誕生日や記念日を登録するよ！（毎年通知）")
