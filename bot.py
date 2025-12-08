@@ -400,54 +400,94 @@ async def on_ready():
     except Exception as e:
         logger.error(f"エラー: {e}")
 
-@bot.tree.command(name="fix_duplicates", description="重複してしまった通知データを整理して修復するよ！")
-async def fix_duplicates(interaction: discord.Interaction):
+@bot.tree.command(name="fix_content_duplicates", description="内容が重複した通知を整理して1つだけ残すよ！")
+async def fix_content_duplicates(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    
-    # 1. 重複のないきれいなデータをメモリに確保（load_notifications修正が必須）
-    # load_notifications() はグローバル変数 notifications を使わないように修正されているので、一時的な変数で受け取る
+
+    # 1. DBから全データを取得
     url = f"{SUPABASE_URL}/rest/v1/notifications?select=*"
     response = requests.get(url, headers=SUPABASE_HEADERS)
-    clean_data_list = []
-    seen_ids = set()
-
-    if response.status_code == 200:
-        for row in response.json():
-            if row["id"] is None or row["id"] in seen_ids:
-                continue
-            seen_ids.add(row["id"])
-            clean_data_list.append({
-                "id": row["id"],
-                "user_id": row["user_id"],
-                "date": row["date"],
-                "time": row["time"],
-                "message": row["message"],
-                "repeat": row.get("repeat", False)
-            })
-    
-    if not clean_data_list:
-        await interaction.followup.send("データベースに通知データがないよ！お掃除する必要もないね🧹", ephemeral=True)
+    if response.status_code != 200:
+        await interaction.followup.send("⚠️ データベースからのデータ取得に失敗したよ。", ephemeral=True)
         return
 
-    await interaction.followup.send("🧹 データベースのお掃除を始めるよ～！重複データを削除して再登録するね…", ephemeral=True)
+    all_rows = response.json()
     
-    # 2. Supabase上の全データを一旦削除
+    # 2. 内容をキーとして、ユニークなデータ（残すデータ）を決定
+    # キー: (user_id, date, time, message, repeat)
+    unique_data = {} 
+    
+    for row in all_rows:
+        # IDがNULLの場合は、念のためここでUUIDを生成しておく（ガードレール）
+        if row.get("id") is None:
+            row["id"] = str(uuid.uuid4())
+            
+        # 通知内容でユニークキーを作成
+        key = (
+            row["user_id"],
+            row["date"],
+            row["time"],
+            row["message"],
+            row.get("repeat", False)
+        )
+        
+        # 最初のデータ（=残すデータ）を格納
+        # 2つ目以降のデータは無視され、削除対象となる
+        if key not in unique_data:
+            unique_data[key] = row 
+
+    
+    # 3. データベースの全削除と再登録
+    clean_data_list = list(unique_data.values())
+    
+    if not clean_data_list:
+        await interaction.followup.send("データベースに通知データがないよ～！", ephemeral=True)
+        return
+        
+    deleted_count = len(all_rows) - len(clean_data_list)
+    
+    await interaction.followup.send(f"🧹データベースのお掃除を始めるよ！内容が重複してるデータ **{deleted_count} 件**を削除して整理するね…", ephemeral=True)
+    
+    # Supabase上の全データを一旦削除
     requests.delete(f"{SUPABASE_URL}/rest/v1/notifications", headers=SUPABASE_HEADERS)
     
-    # 3. 重複のないきれいなデータだけを一括で再登録
+    # 重複のないきれいなデータだけを一括で再登録
     save_url = f"{SUPABASE_URL}/rest/v1/notifications"
     requests.post(save_url, headers=SUPABASE_HEADERS, json=clean_data_list)
     
     # 4. グローバル変数とスケジュールを更新
     global notifications
-    notifications = load_notifications() # load_notificationsを呼び出してメモリ上のデータも更新
+    notifications = load_notifications() 
     schedule_notifications()
 
     await interaction.followup.send(
-        f"✅ お掃除完了！ {len(clean_data_list)} 件のデータを整理したよ！\n"
-        f"⚠️ **重要:** 次のステップで **Supabaseの `id` カラムに「Primary Key」を設定** してね！", 
+        f"お掃除できたよ！内容が重複していた {deleted_count} 件の通知を削除して、{len(clean_data_list)} 件の通知が残ったよ～！", 
         ephemeral=True
     )
+
+@bot.tree.command(name="delete_all_notifications", description="自分の登録通知を全て削除するよ！")
+async def delete_all_notifications(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    
+    user_id = str(interaction.user.id)
+    
+    # Supabaseから当該ユーザーの全通知を削除
+    del_url = f"{SUPABASE_URL}/rest/v1/notifications?user_id=eq.{user_id}"
+    response = requests.delete(del_url, headers=SUPABASE_HEADERS)
+    
+    if response.status_code == 204:
+        # メモリからも削除
+        deleted_count = len(notifications.pop(user_id, []))
+        
+        # スケジュールを更新
+        schedule_notifications()
+
+        await interaction.followup.send(
+            f"ハニーの通知を全部削除したよ！ ({deleted_count} 件)\n",
+            ephemeral=True
+        )
+    else:
+        await interaction.followup.send(f"⚠️ データベースからの削除中にエラーが発生したよ！ (Status Code: {response.status_code})", ephemeral=True)
 
 @bot.event
 async def on_resumed():
