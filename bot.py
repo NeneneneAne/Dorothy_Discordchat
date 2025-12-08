@@ -182,7 +182,7 @@ def save_notifications(notifications):
         insert_data = []
         for item in items:
             insert_data.append({
-                "id": row["id"],
+                "id": item["id"],
                 "user_id": user_id,
                 "date": item["date"],
                 "time": item["time"],
