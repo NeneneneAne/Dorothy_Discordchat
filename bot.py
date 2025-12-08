@@ -551,14 +551,30 @@ async def remove_notification(interaction: discord.Interaction, index: int):
 
     user_id = str(interaction.user.id)
 
-    # 通知が存在しない、または index が不正
-    if user_id not in notifications or not notifications[user_id] or index < 1 or index > len(notifications[user_id]):
-        await interaction.followup.send("指定された通知が見つからないよ～", ephemeral=True)
+    # データがあるかチェック
+    if user_id not in notifications or not notifications[user_id]:
+        await interaction.followup.send("登録されてる通知はないよ～", ephemeral=True)
         return
 
-    removed = notifications[user_id].pop(index - 1)
-    removed_id = removed["id"]
+    sorted_list = sorted(
+        notifications[user_id],
+        key=lambda n: (n["date"], n["time"], n["id"])
+    )
 
+    if index < 1 or index > len(sorted_list):
+        await interaction.followup.send("指定された番号の通知が見つからないよ～", ephemeral=True)
+        return
+
+    target_notification = sorted_list[index - 1]
+
+    try:
+        notifications[user_id].remove(target_notification)
+    except ValueError:
+        await interaction.followup.send("あれ？削除しようとした通知が見つからなかったよ…", ephemeral=True)
+        return
+
+    removed = target_notification
+    removed_id = removed["id"]
     del_url = f"{SUPABASE_URL}/rest/v1/notifications?id=eq.{removed_id}"
     requests.delete(del_url, headers=SUPABASE_HEADERS)
 
