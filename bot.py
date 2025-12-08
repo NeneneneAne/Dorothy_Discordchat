@@ -206,6 +206,8 @@ def save_notifications(notifications):
     url = f"{SUPABASE_URL}/rest/v1/notifications?on_conflict=id"
     requests.post(url, headers=SUPABASE_HEADERS, json=all_rows)
 
+notifications = load_notifications()
+
 def load_daily_notifications():
     url = f"{SUPABASE_URL}/rest/v1/daily_notifications?select=*"
     response = requests.get(url, headers=SUPABASE_HEADERS)
