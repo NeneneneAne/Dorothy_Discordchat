@@ -162,19 +162,24 @@ def load_notifications():
     response = requests.get(url, headers=SUPABASE_HEADERS)
     if response.status_code == 200:
         result = {}
+        seen_ids = set() # 重複チェック用のセット
+        
         for row in response.json():
+            if row["id"] in seen_ids:
+                continue
+            seen_ids.add(row["id"])
+
             result.setdefault(row['user_id'], []).append({
                 "id": row["id"],
                 "date": row["date"],
                 "time": row["time"],
                 "message": row["message"],
-                "repeat": row.get("repeat", False)  # ← 追加！
+                "repeat": row.get("repeat", False)
             })
         return result
     return {}
 
 def save_notifications(notifications):
-
     python_ids = {item["id"] for items in notifications.values() for item in items}
 
     url = f"{SUPABASE_URL}/rest/v1/notifications?select=id"
@@ -203,8 +208,11 @@ def save_notifications(notifications):
     if not all_rows:
         return
 
+    upsert_headers = SUPABASE_HEADERS.copy()
+    upsert_headers["Prefer"] = "resolution=merge-duplicates"
+
     url = f"{SUPABASE_URL}/rest/v1/notifications?on_conflict=id"
-    requests.post(url, headers=SUPABASE_HEADERS, json=all_rows)
+    requests.post(url, headers=upsert_headers, json=all_rows)
 
 notifications = load_notifications()
 
