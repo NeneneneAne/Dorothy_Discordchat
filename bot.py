@@ -96,10 +96,13 @@ def load_chat_targets():
     return []
 
 def save_chat_targets(targets):
-    requests.delete(f"{SUPABASE_URL}/rest/v1/chat_targets", headers=SUPABASE_HEADERS)
+    """一括でUPSERT（上書き保存）する"""
+    if not targets:
+        return
     insert_data = [{"user_id": uid} for uid in targets]
-    if insert_data:
-        requests.post(f"{SUPABASE_URL}/rest/v1/chat_targets", headers=SUPABASE_HEADERS, json=insert_data)
+    headers = SUPABASE_HEADERS.copy()
+    headers["Prefer"] = "resolution=merge-duplicates" # 重複があれば更新
+    requests.post(f"{SUPABASE_URL}/rest/v1/chat_targets", headers=headers, json=insert_data)
 
 chat_targets = load_chat_targets()
 
@@ -111,18 +114,18 @@ def load_sleep_check_times():
     return {}
 
 def save_sleep_check_times(data):
+    """全ユーザー分を1回のリクエストで保存"""
+    all_rows = []
     for user_id, time_data in data.items():
-        # まず削除
-        url = f"{SUPABASE_URL}/rest/v1/sleep_check_times?user_id=eq.{user_id}"
-        requests.delete(url, headers=SUPABASE_HEADERS)
-
-        # 再登録
-        insert_data = {
+        all_rows.append({
             "user_id": user_id,
             "hour": time_data["hour"],
             "minute": time_data["minute"]
-        }
-        requests.post(f"{SUPABASE_URL}/rest/v1/sleep_check_times", headers=SUPABASE_HEADERS, json=[insert_data])
+        })
+    if all_rows:
+        headers = SUPABASE_HEADERS.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        requests.post(f"{SUPABASE_URL}/rest/v1/sleep_check_times", headers=headers, json=all_rows)
 
 # 会話ログの読み書き
 def load_conversation_logs():
@@ -185,28 +188,27 @@ def load_notifications():
     return {}
 
 def save_notifications(notifications):
-
+    """削除ループを1回のリクエストに統合"""
     python_ids = {item["id"] for items in notifications.values() for item in items if item.get("id") is not None}
-
+    
+    # 既存IDの取得
     url = f"{SUPABASE_URL}/rest/v1/notifications?select=id"
     existing = requests.get(url, headers=SUPABASE_HEADERS).json()
     supabase_ids = {row["id"] for row in existing if row.get("id") is not None}
 
+    # 削除対象を一括で削除 (in演算子を使用)
     delete_ids = supabase_ids - python_ids
-
     if delete_ids:
-        for delete_id in delete_ids:
-            del_url = f"{SUPABASE_URL}/rest/v1/notifications?id=eq.{delete_id}"
-            requests.delete(del_url, headers=SUPABASE_HEADERS)
+        ids_str = ",".join([f'"{id}"' for id in delete_ids])
+        del_url = f"{SUPABASE_URL}/rest/v1/notifications?id=in.({ids_str})"
+        requests.delete(del_url, headers=SUPABASE_HEADERS)
 
-
+    # 一括挿入/更新
     all_rows = []
     for user_id, items in notifications.items():
         for item in items:
-
             if item.get("id") is None:
                 item["id"] = str(uuid.uuid4())
-                
             all_rows.append({
                 "id": item["id"],
                 "user_id": user_id, 
@@ -216,14 +218,10 @@ def save_notifications(notifications):
                 "repeat": item.get("repeat", False)
             })
 
-    if not all_rows:
-        return
-
-    upsert_headers = SUPABASE_HEADERS.copy()
-    upsert_headers["Prefer"] = "resolution=merge-duplicates" 
-
-    url = f"{SUPABASE_URL}/rest/v1/notifications?on_conflict=id"
-    requests.post(url, headers=upsert_headers, json=all_rows)
+    if all_rows:
+        upsert_headers = SUPABASE_HEADERS.copy()
+        upsert_headers["Prefer"] = "resolution=merge-duplicates"
+        requests.post(f"{SUPABASE_URL}/rest/v1/notifications", headers=upsert_headers, json=all_rows)
     
 notifications = load_notifications()
 
@@ -250,19 +248,20 @@ def load_daily_notifications():
     return {}
 
 def save_daily_notifications(daily_notifications):
+    """ループを排除し一括保存"""
+    all_rows = []
     for user_id, val in daily_notifications.items():
-        # まずそのユーザーのデータだけ削除
-        url = f"{SUPABASE_URL}/rest/v1/daily_notifications?user_id=eq.{user_id}"
-        requests.delete(url, headers=SUPABASE_HEADERS)
-        insert_data = {
+        all_rows.append({
             "user_id": user_id,
             "todos": json.dumps(val["todos"], ensure_ascii=False),
             "hour": val["time"]["hour"],
             "minute": val["time"]["minute"]
-        }
-        requests.post(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=SUPABASE_HEADERS, json=[insert_data])
+        })
+    if all_rows:
+        headers = SUPABASE_HEADERS.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        requests.post(f"{SUPABASE_URL}/rest/v1/daily_notifications", headers=headers, json=all_rows)
 
-daily_notifications = load_daily_notifications()
 
 def schedule_sleep_check():
     """睡眠チェックのスケジュールを設定"""
