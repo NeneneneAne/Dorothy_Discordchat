@@ -983,7 +983,7 @@ async def get_gemini_response(user_id, user_input):
             "parts": m["parts"]
         })
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent"  # ← 修正
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"  # ← 修正
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
@@ -1013,7 +1013,7 @@ async def get_gemini_response(user_id, user_input):
 async def get_gemini_response_no_history(prompt):
     global session
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
 
@@ -1062,7 +1062,7 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
     # 4. 今回分を messages に追加
     messages.append({"role": "user", "parts": parts})
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     data = {"contents": messages}
