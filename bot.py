@@ -1036,8 +1036,17 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
     if user_id not in conversation_logs:
         conversation_logs[user_id] = []
 
+    # 1. 最初に性格設定を入れる
     messages = [{"role": "user", "parts": [{"text": CHARACTER_PERSONALITY}]}]
 
+    # 2. 過去の履歴を追加する
+    for m in conversation_logs[user_id]:
+        messages.append({
+            "role": m["role"],
+            "parts": m["parts"]
+        })
+
+    # 3. 今回の入力（テキストと画像）を組み立てる
     parts = []
     if user_input:
         parts.append({"text": user_input})
@@ -1050,6 +1059,7 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
             }
         })
 
+    # 4. 今回分を messages に追加
     messages.append({"role": "user", "parts": parts})
 
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent"
@@ -1061,6 +1071,18 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
         if response.status == 200:
             response_json = await response.json()
             reply_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "エラー: 応答が取得できませんでした。")
+            
+            # --- ここに履歴を保存する処理を追加しておくと、次回の会話に繋がります ---
+            now = datetime.datetime.now(JST)
+            current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+            # ユーザーの入力を保存（画像は重いのでテキストのみ保存するのが一般的）
+            conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input or "画像を送ったよ"}], "timestamp": current_time})
+            # AIの返答を保存
+            conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}], "timestamp": current_time})
+            conversation_logs[user_id] = conversation_logs[user_id][-7:] # 直近7件に制限
+            save_conversation_logs(conversation_logs)
+            # --------------------------------------------------
+            
             return reply_text
         else:
             return f"エラー: {response.status} - {await response.text()}"
