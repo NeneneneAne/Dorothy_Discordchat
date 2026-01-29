@@ -1075,13 +1075,21 @@ async def get_gemini_response_with_image(user_id, user_input, image_bytes=None, 
             # --- ここに履歴を保存する処理を追加しておくと、次回の会話に繋がります ---
             now = datetime.datetime.now(JST)
             current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-            # ユーザーの入力を保存（画像は重いのでテキストのみ保存するのが一般的）
-            conversation_logs[user_id].append({"role": "user", "parts": [{"text": user_input or "画像を送ったよ"}], "timestamp": current_time})
+            
+            # ユーザーの入力を保存 (parts の中身をリストにする)
+            user_text = user_input if user_input else "画像を送ったよ"
+            conversation_logs[user_id].append({
+                "role": "user", 
+                "parts": [{"text": user_text}], # ここをリスト形式に
+                "timestamp": current_time
+            })
+            
             # AIの返答を保存
-            conversation_logs[user_id].append({"role": "model", "parts": [{"text": reply_text}], "timestamp": current_time})
-            conversation_logs[user_id] = conversation_logs[user_id][-7:] # 直近7件に制限
-            save_conversation_logs(conversation_logs)
-            # --------------------------------------------------
+            conversation_logs[user_id].append({
+                "role": "model", 
+                "parts": [{"text": reply_text}], # ここをリスト形式に
+                "timestamp": current_time
+            })
             
             return reply_text
         else:
