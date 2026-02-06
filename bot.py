@@ -11,7 +11,7 @@ import asyncio
 import logging
 import tweepy
 import random
-from flask import Flask
+from flask import Flask, request, jsonify
 import threading
 import os
 import re
@@ -24,6 +24,28 @@ from dotenv import load_dotenv
 session = None 
 
 load_dotenv()
+
+API_KEY = os.getenv("API_KEY")
+TOKEN = os.getenv('TOKEN')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GUILD_ID = int(os.getenv("GUILD_ID")) 
+DATA_FILE = "notifications.json"
+DAILY_FILE = "daily_notifications.json"
+LOG_FILE = "conversation_logs.json"
+JST = pytz.timezone("Asia/Tokyo")
+GUILD_IDS = [int(x) for x in os.getenv("GUILD_IDS", "").split(",") if x.strip()]
+HOYOLAB_API = "https://bbs-api-os.hoyoverse.com/game_record/genshin/api/dailyNote"
+HOYOLAB_LTOKEN = os.getenv("HOYOLAB_LTOKEN")
+HOYOLAB_LTUID = os.getenv("HOYOLAB_LTUID")
+GENSHIN_UID = os.getenv("GENSHIN_UID")       # 自分のUID（例: 812345678）
+GENSHIN_SERVER = os.getenv("GENSHIN_SERVER", "os_asia")  # 日本サーバーは os_asia
+DISCORD_NOTIFY_USER_ID = os.getenv("DISCORD_NOTIFY_USER_ID")
+SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
+SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
+SWITCHBOT_LIGHT_ID = os.getenv("SWITCHBOT_LIGHT_ID")
+API_URL = "https://api.switch-bot.com/v1.1/devices"
 
 app = Flask(__name__)
 
@@ -62,26 +84,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 設定
-TOKEN = os.getenv('TOKEN')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-GUILD_ID = int(os.getenv("GUILD_ID")) 
-DATA_FILE = "notifications.json"
-DAILY_FILE = "daily_notifications.json"
-LOG_FILE = "conversation_logs.json"
-JST = pytz.timezone("Asia/Tokyo")
-GUILD_IDS = [int(x) for x in os.getenv("GUILD_IDS", "").split(",") if x.strip()]
-HOYOLAB_API = "https://bbs-api-os.hoyoverse.com/game_record/genshin/api/dailyNote"
-HOYOLAB_LTOKEN = os.getenv("HOYOLAB_LTOKEN")
-HOYOLAB_LTUID = os.getenv("HOYOLAB_LTUID")
-GENSHIN_UID = os.getenv("GENSHIN_UID")       # 自分のUID（例: 812345678）
-GENSHIN_SERVER = os.getenv("GENSHIN_SERVER", "os_asia")  # 日本サーバーは os_asia
-DISCORD_NOTIFY_USER_ID = os.getenv("DISCORD_NOTIFY_USER_ID")
-SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
-SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
-SWITCHBOT_LIGHT_ID = os.getenv("SWITCHBOT_LIGHT_ID")
-API_URL = "https://api.switch-bot.com/v1.1/devices"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
