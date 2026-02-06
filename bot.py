@@ -109,6 +109,13 @@ scheduler = AsyncIOScheduler(timezone=JST)
 
 logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
 
+async def send_dm(user_id: str, message: str):
+    try:
+        user = await bot.fetch_user(int(user_id))
+        await user.send(message)
+    except Exception as e:
+        logger.error(f"DM送信失敗: {e}")
+
 async def register_notification(user_id, date, time, message, repeat):
     if user_id not in notifications:
         notifications[user_id] = []
@@ -123,6 +130,13 @@ async def register_notification(user_id, date, time, message, repeat):
 
     save_notifications(notifications)
     schedule_notifications()
+    
+    await send_dm(
+    user_id,
+    f"📱 iPhoneから通知を追加したよ！\n"
+    f"🗓 {date} {time}\n"
+    f"💬 {message}"
+    )
 
 # --- ランダム会話ターゲット管理 ---
 def load_chat_targets():
