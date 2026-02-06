@@ -130,13 +130,6 @@ async def register_notification(user_id, date, time, message, repeat):
 
     save_notifications(notifications)
     schedule_notifications()
-    
-    await send_dm(
-    user_id,
-    f"📱 iPhoneから通知を追加したよ！\n"
-    f"🗓 {date} {time}\n"
-    f"💬 {message}"
-    )
 
 # --- ランダム会話ターゲット管理 ---
 def load_chat_targets():
