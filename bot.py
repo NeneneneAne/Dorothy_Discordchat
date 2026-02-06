@@ -35,6 +35,26 @@ def home():
 def run():
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
 
+@app.route("/set_notification", methods=["POST"])
+def set_notification_api():
+    data = request.json
+
+    if data.get("api_key") != API_KEY:
+        return jsonify({"error": "unauthorized"}), 401
+
+    asyncio.run_coroutine_threadsafe(
+        register_notification(
+            user_id=data["user_id"],
+            date=data["date"],
+            time=data["time"],
+            message=data["message"],
+            repeat=data.get("repeat", False)
+        ),
+        bot.loop
+    )
+
+    return jsonify({"ok": True})
+
 thread = threading.Thread(target=run)
 thread.start()
 
@@ -86,6 +106,21 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone=JST)
 
 logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
+
+async def register_notification(user_id, date, time, message, repeat):
+    if user_id not in notifications:
+        notifications[user_id] = []
+
+    notifications[user_id].append({
+        "id": str(uuid.uuid4()),
+        "date": date,
+        "time": time,
+        "message": message,
+        "repeat": repeat
+    })
+
+    save_notifications(notifications)
+    schedule_notifications()
 
 # --- ランダム会話ターゲット管理 ---
 def load_chat_targets():
@@ -522,21 +557,13 @@ async def set_notification(
     )
 
     async def background_task():
-        user_id = str(interaction.user.id)
-
-        if user_id not in notifications:
-            notifications[user_id] = []
-
-        notifications[user_id].append({
-            "id": str(uuid.uuid4()),
-            "date": date,
-            "time": time,
-            "message": message,
-            "repeat": repeat
-        })
-
-        save_notifications(notifications)
-        schedule_notifications()
+        await register_notification(
+            user_id=str(interaction.user.id),
+            date=date,
+            time=time,
+            message=message,
+            repeat=repeat
+        )
 
         await interaction.followup.send(
             f'✅ {date} の {time} に "{message}" を登録したよ！リピート: {"あり" if repeat else "なし"}',
