@@ -8,3 +8,4 @@ soundfile
 tweepy
 openai
 boto3
+paramiko
