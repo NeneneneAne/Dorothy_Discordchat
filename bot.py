@@ -118,7 +118,7 @@ async def send_shutdown_message():
         channel = await bot.fetch_channel(channel_id)
 
     if channel:
-        await channel.send("インスタンスを停止したよ！")
+        await channel.send("インスタンスをとめたよ！")
 
 thread = threading.Thread(target=run)
 thread.start()
@@ -245,7 +245,7 @@ async def start_server_command(interaction: discord.Interaction):
     async def background_task():
         try:
             # 起動中メッセージ
-            await interaction.followup.send("🚀 サーバーを起動しています…", ephemeral=True)
+            await interaction.followup.send("起動中", ephemeral=True)
         except discord.NotFound:
             print("Interaction は失効済みで起動中メッセージ送れず")
 
@@ -254,7 +254,7 @@ async def start_server_command(interaction: discord.Interaction):
 
         try:
             # 完了メッセージ
-            await interaction.followup.send("🎮 サーバーと監視スクリプトを起動しました！", ephemeral=True)
+            await interaction.followup.send("サーバーを起動したよ！", ephemeral=True)
         except discord.NotFound:
             print("Interaction は失効済みで完了メッセージ送れず")
 
@@ -271,7 +271,7 @@ async def stop_server_command(interaction: discord.Interaction):
     async def background_task():
         await asyncio.to_thread(stop_minecraft_and_ec2)
         try:
-            await interaction.followup.send("🛑 サーバーと EC2 を停止しました。", ephemeral=True)
+            await interaction.followup.send("サーバーとインスタンスをとめたよ！", ephemeral=True)
         except discord.NotFound:
             print("Interaction は失効済みで停止完了メッセージ送れず")
 
