@@ -166,27 +166,43 @@ def start_minecraft_and_monitor():
     waiter.wait(InstanceIds=[INSTANCE_ID])
     print("EC2 起動完了")
 
+    # Minecraft サーバーを screen で起動
     print("Minecraft サーバーを screen で起動中…")
     cmd = (
         f"screen -dmS {SCREEN_NAME} bash -c '"
-        f"cd {SERVER_DIR} && chmod +x start_server.sh && ./start_server.sh'"
+        f"cd {SERVER_DIR} && chmod +x start_server.sh && ./start_server.sh; exec bash'"
     )
     out, err = run_ssh_command(cmd)
     print("Minecraft start_server.sh stdout:", out)
     print("Minecraft start_server.sh stderr:", err)
 
+    # auto_shutdown を screen で起動
     print("auto_shutdown を screen で起動中…")
-    cmd = f"screen -dmS shutdown bash -c 'cd {SERVER_DIR} && chmod +x auto_shutdown.sh && ./auto_shutdown.sh'"
+    cmd = (
+        f"screen -dmS shutdown bash -c '"
+        f"cd {SERVER_DIR} && chmod +x auto_shutdown.sh && ./auto_shutdown.sh; exec bash'"
+    )
     out, err = run_ssh_command(cmd)
     print("auto_shutdown stdout:", out)
     print("auto_shutdown stderr:", err)
 
     print("Minecraft サーバーと監視スクリプトを起動しました！")
 
-def stop_ec2_instance():
-    print("EC2 停止中…")
+
+def stop_minecraft_and_ec2():
+    """Minecraftサーバー停止 + EC2 停止"""
+    print("Minecraft サーバーを停止中…")
+    # screen 内で Minecraft の stop コマンド送信
+    cmd = f"screen -S {SCREEN_NAME} -X stuff 'stop\n'"
+    out, err = run_ssh_command(cmd)
+    print("stop_server stdout:", out)
+    print("stop_server stderr:", err)
+
+    # EC2 停止
+    print("EC2 インスタンスを停止中…")
     client.stop_instances(InstanceIds=[INSTANCE_ID])
     print("EC2 停止完了")
+
 
 def run_ssh_command(command: str):
     key = paramiko.RSAKey.from_private_key_file(EC2_KEY_PATH)
@@ -201,16 +217,6 @@ def run_ssh_command(command: str):
     ssh.close()
     return out, err
 
-def stop_minecraft_and_ec2():
-    """Minecraftサーバー停止 + EC2 停止"""
-    print("Minecraft サーバーを停止中…")
-    cmd = f"screen -S {SCREEN_NAME} -X stuff 'stop\n'"
-    out, err = run_ssh_command(cmd)
-    print(out, err)
-
-    print("EC2 インスタンスを停止中…")
-    client.stop_instances(InstanceIds=[INSTANCE_ID])
-    print("EC2 停止完了")
 
 @bot.tree.command(name="start_server", description="Minecraftサーバーを起動するよ")
 async def start_server_command(interaction: discord.Interaction):
@@ -218,7 +224,7 @@ async def start_server_command(interaction: discord.Interaction):
 
     async def background_task():
         await interaction.followup.send("🚀 サーバーを起動しています…", ephemeral=True)
-        await asyncio.to_thread(start_minecraft_and_monitor)  # 同期関数を非同期で実行
+        await asyncio.to_thread(start_minecraft_and_monitor)
         await interaction.followup.send("🎮 サーバーと監視スクリプトを起動しました！", ephemeral=True)
 
     asyncio.create_task(background_task())
@@ -229,7 +235,7 @@ async def stop_server_command(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     async def background_task():
-        await asyncio.to_thread(stop_minecraft_and_ec2)  # 同期関数を非同期で実行
+        await asyncio.to_thread(stop_minecraft_and_ec2)
         await interaction.followup.send("🛑 サーバーと EC2 を停止しました。", ephemeral=True)
 
     asyncio.create_task(background_task())
