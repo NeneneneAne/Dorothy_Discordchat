@@ -193,7 +193,7 @@ def stop_minecraft_and_ec2():
     """Minecraftサーバー停止 + EC2 停止"""
     print("Minecraft サーバーを停止中…")
     # screen 内で Minecraft の stop コマンド送信
-    cmd = f"screen -S {SCREEN_NAME} -X stuff 'stop\n'"
+    cmd = f"screen -S {SCREEN_NAME} -X stuff $'stop\\n'"
     out, err = run_ssh_command(cmd)
     print("stop_server stdout:", out)
     print("stop_server stderr:", err)
@@ -220,23 +220,44 @@ def run_ssh_command(command: str):
 
 @bot.tree.command(name="start_server", description="Minecraftサーバーを起動するよ")
 async def start_server_command(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+    # まず即時 defer して interaction が切れないようにする
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.NotFound:
+        print("Interaction はすでに失効しています")
 
     async def background_task():
-        await interaction.followup.send("🚀 サーバーを起動しています…", ephemeral=True)
+        try:
+            # 起動中メッセージ
+            await interaction.followup.send("🚀 サーバーを起動しています…", ephemeral=True)
+        except discord.NotFound:
+            print("Interaction は失効済みで起動中メッセージ送れず")
+
+        # Minecraft + auto_shutdown 起動
         await asyncio.to_thread(start_minecraft_and_monitor)
-        await interaction.followup.send("🎮 サーバーと監視スクリプトを起動しました！", ephemeral=True)
+
+        try:
+            # 完了メッセージ
+            await interaction.followup.send("🎮 サーバーと監視スクリプトを起動しました！", ephemeral=True)
+        except discord.NotFound:
+            print("Interaction は失効済みで完了メッセージ送れず")
 
     asyncio.create_task(background_task())
 
 
 @bot.tree.command(name="stop_server", description="Minecraftサーバーを停止するよ")
 async def stop_server_command(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.NotFound:
+        print("Interaction はすでに失効しています")
 
     async def background_task():
         await asyncio.to_thread(stop_minecraft_and_ec2)
-        await interaction.followup.send("🛑 サーバーと EC2 を停止しました。", ephemeral=True)
+        try:
+            await interaction.followup.send("🛑 サーバーと EC2 を停止しました。", ephemeral=True)
+        except discord.NotFound:
+            print("Interaction は失効済みで停止完了メッセージ送れず")
 
     asyncio.create_task(background_task())
     
