@@ -143,7 +143,7 @@ def start_auto_shutdown():
     cmd = f"screen -S shutdown -dm bash -c 'cd {SERVER_DIR} && ./auto_shutdown.sh'"
     subprocess.call(cmd, shell=True)
 
-ef start_ec2_instance():
+def start_ec2_instance():
     client.start_instances(InstanceIds=[INSTANCE_ID])
     print("EC2 起動中…")
     waiter = client.get_waiter('instance_running')
