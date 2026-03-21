@@ -167,14 +167,19 @@ def start_minecraft_and_monitor():
     print("EC2 起動完了")
 
     print("Minecraft サーバーを screen で起動中…")
-    cmd = f"screen -dmS {SCREEN_NAME} bash -c 'cd {SERVER_DIR} && ./start_server.sh'"
+    cmd = (
+        f"screen -dmS {SCREEN_NAME} bash -c '"
+        f"cd {SERVER_DIR} && chmod +x start_server.sh && ./start_server.sh'"
+    )
     out, err = run_ssh_command(cmd)
-    print(out, err)
+    print("Minecraft start_server.sh stdout:", out)
+    print("Minecraft start_server.sh stderr:", err)
 
     print("auto_shutdown を screen で起動中…")
-    cmd = f"screen -dmS shutdown bash -c 'cd {SERVER_DIR} && ./auto_shutdown.sh'"
+    cmd = f"screen -dmS shutdown bash -c 'cd {SERVER_DIR} && chmod +x auto_shutdown.sh && ./auto_shutdown.sh'"
     out, err = run_ssh_command(cmd)
-    print(out, err)
+    print("auto_shutdown stdout:", out)
+    print("auto_shutdown stderr:", err)
 
     print("Minecraft サーバーと監視スクリプトを起動しました！")
 
