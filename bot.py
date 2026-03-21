@@ -48,12 +48,19 @@ SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
 SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
 SWITCHBOT_LIGHT_ID = os.getenv("SWITCHBOT_LIGHT_ID")
 API_URL = "https://api.switch-bot.com/v1.1/devices"
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 INSTANCE_ID = os.getenv("EC2_INSTANCE_ID")  # Koyebの環境変数に入れる
 REGION = "ap-northeast-1"
 SERVER_DIR = "/home/ec2-user/fabric-server"  # Fabricサーバーディレクトリ
 SCREEN_NAME = "mcserver"
 
-client = boto3.client("ec2", region_name=REGION)
+client = boto3.client(
+    "ec2",
+    region_name=REGION,
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+)
 
 app = Flask(__name__)
 
