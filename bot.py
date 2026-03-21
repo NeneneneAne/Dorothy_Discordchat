@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 import boto3
 import subprocess
 import stat
+import paramiko
 
 session = None 
 
