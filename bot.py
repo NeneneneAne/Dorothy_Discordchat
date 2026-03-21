@@ -104,6 +104,22 @@ def set_notification_api():
 
     return jsonify({"ok": True})
 
+@app.route("/shutdown", methods=["POST"])
+def shutdown_notify():
+    asyncio.run_coroutine_threadsafe(send_shutdown_message(), bot.loop)
+    return "ok"
+
+async def send_shutdown_message():
+    channel_id = 1484875044223193168
+
+    channel = bot.get_channel(channel_id)
+
+    if channel is None:
+        channel = await bot.fetch_channel(channel_id)
+
+    if channel:
+        await channel.send("インスタンスを停止したよ！")
+
 thread = threading.Thread(target=run)
 thread.start()
 
