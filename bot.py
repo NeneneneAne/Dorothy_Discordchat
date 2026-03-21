@@ -20,6 +20,8 @@ from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from collections import deque  # メッセージ履歴の管理に使用
 from dotenv import load_dotenv
+import boto3
+import subprocess
 
 session = None 
 
@@ -46,6 +48,12 @@ SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
 SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
 SWITCHBOT_LIGHT_ID = os.getenv("SWITCHBOT_LIGHT_ID")
 API_URL = "https://api.switch-bot.com/v1.1/devices"
+INSTANCE_ID = os.getenv("EC2_INSTANCE_ID")  # Koyebの環境変数に入れる
+REGION = "ap-northeast-1"
+SERVER_DIR = "/home/ec2-user/fabric-server"  # Fabricサーバーディレクトリ
+SCREEN_NAME = "mcserver"
+
+client = boto3.client("ec2", region_name=REGION)
 
 app = Flask(__name__)
 
@@ -144,15 +152,16 @@ def start_auto_shutdown():
     subprocess.call(cmd, shell=True)
 
 def start_ec2_instance():
-    client.start_instances(InstanceIds=[INSTANCE_ID])
     print("EC2 起動中…")
+    client.start_instances(InstanceIds=[INSTANCE_ID])
     waiter = client.get_waiter('instance_running')
     waiter.wait(InstanceIds=[INSTANCE_ID])
     print("EC2 起動完了")
 
 def stop_ec2_instance():
-    client.stop_instances(InstanceIds=[INSTANCE_ID])
     print("EC2 停止中…")
+    client.stop_instances(InstanceIds=[INSTANCE_ID])
+    print("EC2 停止完了")
     
 # --- ランダム会話ターゲット管理 ---
 def load_chat_targets():
