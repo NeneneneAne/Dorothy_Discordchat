@@ -159,20 +159,20 @@ async def register_notification(user_id, date, time, message, repeat):
     schedule_notifications()
     
 def start_minecraft_and_monitor():
-    """EC2 起動 → Minecraft サーバー起動 → auto_shutdown 起動"""
+    """EC2 起動 → Minecraft サーバーを screen で起動 → auto_shutdown を screen で起動"""
     print("EC2 起動中…")
     client.start_instances(InstanceIds=[INSTANCE_ID])
     waiter = client.get_waiter('instance_running')
     waiter.wait(InstanceIds=[INSTANCE_ID])
     print("EC2 起動完了")
 
-    print("Minecraft サーバーを起動中…")
-    cmd = f"cd {SERVER_DIR} && ./start_server.sh"
+    print("Minecraft サーバーを screen で起動中…")
+    cmd = f"screen -dmS {SCREEN_NAME} bash -c 'cd {SERVER_DIR} && ./start_server.sh'"
     out, err = run_ssh_command(cmd)
     print(out, err)
 
-    print("auto_shutdown を起動中…")
-    cmd = f"cd {SERVER_DIR} && ./auto_shutdown.sh &"
+    print("auto_shutdown を screen で起動中…")
+    cmd = f"screen -dmS shutdown bash -c 'cd {SERVER_DIR} && ./auto_shutdown.sh'"
     out, err = run_ssh_command(cmd)
     print(out, err)
 
@@ -199,7 +199,7 @@ def run_ssh_command(command: str):
 def stop_minecraft_and_ec2():
     """Minecraftサーバー停止 + EC2 停止"""
     print("Minecraft サーバーを停止中…")
-    cmd = f"cd {SERVER_DIR} && screen -S {SCREEN_NAME} -X stuff 'stop\n'"
+    cmd = f"screen -S {SCREEN_NAME} -X stuff 'stop\n'"
     out, err = run_ssh_command(cmd)
     print(out, err)
 
