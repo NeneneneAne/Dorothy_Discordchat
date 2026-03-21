@@ -22,6 +22,7 @@ from collections import deque  # メッセージ履歴の管理に使用
 from dotenv import load_dotenv
 import boto3
 import subprocess
+import stat
 
 session = None 
 
@@ -54,6 +55,16 @@ INSTANCE_ID = os.getenv("EC2_INSTANCE_ID")  # Koyebの環境変数に入れる
 REGION = "ap-northeast-1"
 SERVER_DIR = "/home/ec2-user/fabric-server"  # Fabricサーバーディレクトリ
 SCREEN_NAME = "mcserver"
+EC2_HOST = os.getenv("EC2_PUBLIC_IP")       # EC2のパブリックIP
+EC2_USER = "ec2-user"                       # Amazon Linux の場合
+key_b64 = os.getenv("EC2_KEY_B64")
+EC2_KEY_PATH = "/tmp/nenene.pem"
+
+with open(EC2_KEY_PATH, "wb") as f:
+    f.write(base64.b64decode(key_b64))
+
+# パーミッションを 400 に
+os.chmod(EC2_KEY_PATH, stat.S_IRUSR)
 
 client = boto3.client(
     "ec2",
@@ -145,30 +156,77 @@ async def register_notification(user_id, date, time, message, repeat):
 
     save_notifications(notifications)
     schedule_notifications()
-
-def start_minecraft_server():
-    cmd = f"screen -S {SCREEN_NAME} -dm bash -c 'cd {SERVER_DIR} && ./start_server.sh'"
-    subprocess.call(cmd, shell=True)
-
-def stop_minecraft_server():
-    cmd = f"screen -S {SCREEN_NAME} -X stuff 'stop\n'"
-    subprocess.call(cmd, shell=True)
-
-def start_auto_shutdown():
-    cmd = f"screen -S shutdown -dm bash -c 'cd {SERVER_DIR} && ./auto_shutdown.sh'"
-    subprocess.call(cmd, shell=True)
-
-def start_ec2_instance():
+    
+def start_minecraft_and_monitor():
+    """EC2 起動 → Minecraft サーバー起動 → auto_shutdown 起動"""
     print("EC2 起動中…")
     client.start_instances(InstanceIds=[INSTANCE_ID])
     waiter = client.get_waiter('instance_running')
     waiter.wait(InstanceIds=[INSTANCE_ID])
     print("EC2 起動完了")
 
+    print("Minecraft サーバーを起動中…")
+    cmd = f"cd {SERVER_DIR} && ./start_server.sh"
+    out, err = run_ssh_command(cmd)
+    print(out, err)
+
+    print("auto_shutdown を起動中…")
+    cmd = f"cd {SERVER_DIR} && ./auto_shutdown.sh &"
+    out, err = run_ssh_command(cmd)
+    print(out, err)
+
+    print("Minecraft サーバーと監視スクリプトを起動しました！")
+
 def stop_ec2_instance():
     print("EC2 停止中…")
     client.stop_instances(InstanceIds=[INSTANCE_ID])
     print("EC2 停止完了")
+
+def run_ssh_command(command: str):
+    key = paramiko.RSAKey.from_private_key_file(EC2_KEY_PATH)
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(EC2_HOST, username=EC2_USER, pkey=key)
+    
+    stdin, stdout, stderr = ssh.exec_command(command)
+    out = stdout.read().decode()
+    err = stderr.read().decode()
+    
+    ssh.close()
+    return out, err
+
+def stop_minecraft_and_ec2():
+    """Minecraftサーバー停止 + EC2 停止"""
+    print("Minecraft サーバーを停止中…")
+    cmd = f"cd {SERVER_DIR} && screen -S {SCREEN_NAME} -X stuff 'stop\n'"
+    out, err = run_ssh_command(cmd)
+    print(out, err)
+
+    print("EC2 インスタンスを停止中…")
+    client.stop_instances(InstanceIds=[INSTANCE_ID])
+    print("EC2 停止完了")
+
+@bot.tree.command(name="start_server", description="Minecraftサーバーを起動するよ")
+async def start_server_command(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    async def background_task():
+        await interaction.followup.send("🚀 サーバーを起動しています…", ephemeral=True)
+        await asyncio.to_thread(start_minecraft_and_monitor)  # 同期関数を非同期で実行
+        await interaction.followup.send("🎮 サーバーと監視スクリプトを起動しました！", ephemeral=True)
+
+    asyncio.create_task(background_task())
+
+
+@bot.tree.command(name="stop_server", description="Minecraftサーバーを停止するよ")
+async def stop_server_command(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    async def background_task():
+        await asyncio.to_thread(stop_minecraft_and_ec2)  # 同期関数を非同期で実行
+        await interaction.followup.send("🛑 サーバーと EC2 を停止しました。", ephemeral=True)
+
+    asyncio.create_task(background_task())
     
 # --- ランダム会話ターゲット管理 ---
 def load_chat_targets():
@@ -1689,32 +1747,6 @@ async def light_off(interaction: discord.Interaction):
 
     except Exception as e:
         await interaction.followup.send(f"❌ 通信中にエラーが発生したよ: {e}", ephemeral=True)
-
-@bot.tree.command(name="start_server", description="Minecraftサーバーを起動するよ")
-async def start_server_command(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    async def background_task():
-        await interaction.followup.send("🚀 EC2インスタンスを起動しています…", ephemeral=True)
-        start_ec2_instance()  # EC2を起動
-        await interaction.followup.send("✅ インスタンス起動完了。サーバーを起動します…", ephemeral=True)
-        start_minecraft_server()  # Fabricサーバー起動
-        start_auto_shutdown()      # auto_shutdown起動
-        await interaction.followup.send("🎮 Minecraftサーバーと監視スクリプトを起動しました！", ephemeral=True)
-
-    asyncio.create_task(background_task())
-
-
-@bot.tree.command(name="stop_server", description="Minecraftサーバーを停止するよ")
-async def stop_server_command(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    async def background_task():
-        stop_minecraft_server()  # サーバー停止
-        stop_ec2_instance()      # EC2停止
-        await interaction.followup.send("🛑 MinecraftサーバーとEC2インスタンスを停止しました。", ephemeral=True)
-
-    asyncio.create_task(background_task())
 
 # twitter_thread = threading.Thread(target=start_twitter_bot)
 # twitter_thread.start()
