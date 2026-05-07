@@ -212,7 +212,7 @@ def run_ssh_command(command):
 
 # --- 1. kana-start (マイクラ停止 -> 読み上げ起動) ---
 
-@bot.tree.command(name="kana-start", description="マイクラを止めて読み上げBotを起動するよ！")
+@bot.tree.command(name="croix-start", description="マイクラを止めて読み上げBotを起動するよ！")
 async def kana_start(interaction: discord.Interaction):
     if not is_allowed(interaction):
         await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
@@ -262,15 +262,24 @@ async def minecraft_start(interaction: discord.Interaction):
 
 # --- 3. 状況確認コマンド ---
 
-@bot.tree.command(name="mc-status", description="サーバーの稼働状況を確認するよ！")
+@bot.tree.command(name="vps-status", description="サーバーの稼働状況を確認するよ！")
 async def mc_status(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
+    
+    # 1. マイクラの判定 (Screenの名前で確認)
     out, _ = await asyncio.to_thread(run_ssh_command, "screen -ls")
     mc_running = "✅ 稼働中" if out and "minecraft" in out else "💤 停止中"
     
-    # 読み上げBotの状態も取得
-    kana_out, _ = await asyncio.to_thread(run_ssh_command, "systemctl --user is-active kana.service")
-    kana_running = "✅ 稼働中" if kana_out and "active" in kana_out else "💤 停止中"
+    # 2. 読み上げBotの判定 (pgrepを使ってプロセス名を直接探す)
+    # kana.service で動いている実行ファイル名、または 'python' などのキーワードを指定
+    # ここでは一番確実な「サービスがactiveかどうか」をgrepで判定する方法にします
+    kana_out, _ = await asyncio.to_thread(run_ssh_command, "systemctl --user status kana.service | grep 'Active:'")
+    
+    # 'active (running)' という文字列が含まれているかだけで判定
+    if kana_out and "active (running)" in kana_out:
+        kana_running = "✅ 稼働中"
+    else:
+        kana_running = "💤 停止中"
     
     await interaction.followup.send(
         f"📊 **サーバー状況**\n・マイクラ: {mc_running}\n・読み上げ: {kana_running}", 
