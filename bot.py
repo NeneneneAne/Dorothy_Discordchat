@@ -212,7 +212,7 @@ def run_ssh_command(command):
 
 # --- 1. kana-start (マイクラ停止 -> 読み上げ起動) ---
 
-@bot.tree.command(name="croix-start", description="マイクラを止めて読み上げBotを起動するよ！")
+@bot.tree.command(name="start-croix", description="マイクラを止めて読み上げBotを起動するよ！")
 async def kana_start(interaction: discord.Interaction):
     if not is_allowed(interaction):
         await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
@@ -237,7 +237,7 @@ async def kana_start(interaction: discord.Interaction):
 
 # --- 2. minecraft-start (読み上げ停止 -> マイクラ起動) ---
 
-@bot.tree.command(name="minecraft-start", description="読み上げBotを止めてマイクラを起動するよ！")
+@bot.tree.command(name="start-minecraft", description="読み上げBotを止めてマイクラを起動するよ！")
 async def minecraft_start(interaction: discord.Interaction):
     if not is_allowed(interaction):
         await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
