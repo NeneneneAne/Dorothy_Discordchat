@@ -188,47 +188,52 @@ def run_ssh_command(command):
     except Exception as e:
         return None, str(e)
 
-@bot.tree.command(name="kana-start", description="読み上げBotを開始・再起動するよ！")
+@bot.tree.command(name="kana-start", description="マイクラを止めて読み上げBotを起動するよ！")
 async def kana_start(interaction: discord.Interaction):
     if not is_allowed(interaction):
         await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
         return
+    
     await interaction.response.defer(ephemeral=True)
-    _, err = await asyncio.to_thread(run_ssh_command, "systemctl --user restart kana.service")
-    await interaction.followup.send("🔊 読み上げBotを起動したよ！" if not err else f"⚠️ エラー: {err}")
+    
+    # 流れ：マイクラにstopを送信 -> kanaをrestart
+    # screenの中身にstopを送り、少し待ってからkanaを動かす一連のコマンド
+    combined_cmd = (
+        "screen -S minecraft -X stuff 'stop\\n' && "
+        "sleep 5 && "
+        "systemctl --user restart kana.service"
+    )
+    
+    _, err = await asyncio.to_thread(run_ssh_command, combined_cmd)
+    
+    if err and "No screen session found" not in err: # マイクラが既に止まっていてもエラー扱いしない
+        await interaction.followup.send(f"⚠️ エラーが出たかも: {err}", ephemeral=True)
+    else:
+        await interaction.followup.send("🔊 マイクラを停止信号を送って、読み上げBotを起動したよ！", ephemeral=True)
 
-@bot.tree.command(name="kana-stop", description="読み上げBotを停止するよ！")
-async def kana_stop(interaction: discord.Interaction):
+# --- 2. マイクラ開始コマンド (読み上げBotを停止してから) ---
+@bot.tree.command(name="minecraft-start", description="読み上げBotを止めてマイクラを起動するよ！")
+async def minecraft_start(interaction: discord.Interaction):
     if not is_allowed(interaction):
         await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
         return
+    
     await interaction.response.defer(ephemeral=True)
-    _, err = await asyncio.to_thread(run_ssh_command, "systemctl --user stop kana.service")
-    await interaction.followup.send("🔇 読み上げBotを停止したよ！" if not err else f"⚠️ エラー: {err}")
-
-# --- マイクラサーバー操作コマンド ---
-
-@bot.tree.command(name="mc-start", description="マイクラサーバーを起動するよ！")
-async def mc_start(interaction: discord.Interaction):
-    if not is_allowed(interaction):
-        await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    # 既に動いていないか確認してから起動 (パスは環境に合わせてください)
-    cmd = "screen -ls | grep -q minecraft || (cd /root/mc-forge-120 && screen -dmS minecraft ./run.sh)"
-    _, err = await asyncio.to_thread(run_ssh_command, cmd)
-    await interaction.followup.send("🎮 マイクラサーバーの起動を試みたよ！" if not err else f"⚠️ エラー: {err}")
-
-@bot.tree.command(name="mc-stop", description="マイクラサーバーを安全に停止するよ！")
-async def mc_stop(interaction: discord.Interaction):
-    if not is_allowed(interaction):
-        await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    # 安全に停止信号を送る
-    cmd = "screen -S minecraft -X stuff 'stop\\n'"
-    _, err = await asyncio.to_thread(run_ssh_command, cmd)
-    await interaction.followup.send("🛑 マイクラサーバーに停止コマンドを送ったよ！")
+    
+    # 流れ：kanaをstop -> マイクラをscreenで起動
+    # ディレクトリパスは実際の環境に合わせて cd /root/... を調整してください
+    combined_cmd = (
+        "systemctl --user stop kana.service && "
+        "sleep 2 && "
+        "screen -ls | grep -q minecraft || (cd /root/mc-forge-120 && screen -dmS minecraft ./run.sh)"
+    )
+    
+    _, err = await asyncio.to_thread(run_ssh_command, combined_cmd)
+    
+    if err:
+        await interaction.followup.send(f"⚠️ エラー: {err}", ephemeral=True)
+    else:
+        await interaction.followup.send("🎮 読み上げBotを止めて、マイクラの起動コマンドを送ったよ！", ephemeral=True)
 
 @bot.tree.command(name="mc-status", description="サーバーの稼働状況を確認するよ！")
 async def mc_status(interaction: discord.Interaction):
