@@ -167,26 +167,31 @@ def is_allowed(interaction: discord.Interaction):
     return interaction.user.id in ALLOWED_USER_IDS
 
 def run_ssh_command(command):
-    """環境変数の秘密鍵を使ってSSH経由でコマンドを実行する"""
+    """環境変数の秘密鍵(OpenSSH対応)を使ってコマンドを実行"""
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
         # 文字列として保存された秘密鍵を読み込む
-        key_file = io.StringIO(SSH_PRIVATE_KEY)
-        
-        # --- ここを汎用的な PKey に変更 ---
+        key_file = io.StringIO(os.getenv('SSH_PRIVATE_KEY'))
+        # PKey は鍵の形式(RSA/OpenSSH/Ed25519)を自動判別します
         private_key = paramiko.PKey.from_private_key(key_file)
         
-        ssh.connect(SSH_HOST, port=SSH_PORT, username=SSH_USER, pkey=private_key)
+        ssh.connect(
+            os.getenv('SSH_HOST'), 
+            port=int(os.getenv('SSH_PORT', 22)), 
+            username=os.getenv('SSH_USER'), 
+            pkey=private_key
+        )
         stdin, stdout, stderr = ssh.exec_command(command)
-        
         output = stdout.read().decode('utf-8')
         error = stderr.read().decode('utf-8')
         ssh.close()
         return output, error
     except Exception as e:
         return None, str(e)
+
+# --- 1. kana-start (マイクラ停止 -> 読み上げ起動) ---
 
 @bot.tree.command(name="kana-start", description="マイクラを止めて読み上げBotを起動するよ！")
 async def kana_start(interaction: discord.Interaction):
@@ -196,22 +201,23 @@ async def kana_start(interaction: discord.Interaction):
     
     await interaction.response.defer(ephemeral=True)
     
-    # 流れ：マイクラにstopを送信 -> kanaをrestart
-    # screenの中身にstopを送り、少し待ってからkanaを動かす一連のコマンド
+    # 流れ：マイクラにstopを送信 -> 10秒待機 -> kanaを再起動
     combined_cmd = (
         "screen -S minecraft -X stuff 'stop\\n' && "
-        "sleep 5 && "
+        "sleep 10 && "
         "systemctl --user restart kana.service"
     )
     
     _, err = await asyncio.to_thread(run_ssh_command, combined_cmd)
     
-    if err and "No screen session found" not in err: # マイクラが既に止まっていてもエラー扱いしない
+    # マイクラが元々止まっていてもエラー扱いしない
+    if err and "No screen session found" not in err:
         await interaction.followup.send(f"⚠️ エラーが出たかも: {err}", ephemeral=True)
     else:
-        await interaction.followup.send("🔊 マイクラを停止信号を送って、読み上げBotを起動したよ！", ephemeral=True)
+        await interaction.followup.send("🔊 マイクラを停止し、読み上げBotを起動したよ！", ephemeral=True)
 
-# --- 2. マイクラ開始コマンド (読み上げBotを停止してから) ---
+# --- 2. minecraft-start (読み上げ停止 -> マイクラ起動) ---
+
 @bot.tree.command(name="minecraft-start", description="読み上げBotを止めてマイクラを起動するよ！")
 async def minecraft_start(interaction: discord.Interaction):
     if not is_allowed(interaction):
@@ -220,8 +226,8 @@ async def minecraft_start(interaction: discord.Interaction):
     
     await interaction.response.defer(ephemeral=True)
     
-    # 流れ：kanaをstop -> マイクラをscreenで起動
-    # ディレクトリパスは実際の環境に合わせて cd /root/... を調整してください
+    # 流れ：kanaを停止 -> 2秒待機 -> マイクラをscreenで起動
+    # ※ディレクトリパスは /root/mc-forge-120 のままにしていますが、必要なら書き換えてください
     combined_cmd = (
         "systemctl --user stop kana.service && "
         "sleep 2 && "
@@ -233,40 +239,24 @@ async def minecraft_start(interaction: discord.Interaction):
     if err:
         await interaction.followup.send(f"⚠️ エラー: {err}", ephemeral=True)
     else:
-        await interaction.followup.send("🎮 読み上げBotを止めて、マイクラの起動コマンドを送ったよ！", ephemeral=True)
+        await interaction.followup.send("🎮 読み上げBotを停止し、マイクラの起動コマンドを送ったよ！", ephemeral=True)
+
+# --- 3. 状況確認コマンド ---
 
 @bot.tree.command(name="mc-status", description="サーバーの稼働状況を確認するよ！")
 async def mc_status(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     out, _ = await asyncio.to_thread(run_ssh_command, "screen -ls")
-    mc_running = "✅ 稼働中" if "minecraft" in out else "💤 停止中"
-    await interaction.followup.send(f"📊 **サーバー状況**\n・マイクラ: {mc_running}")
-
-@bot.tree.command(name="start_server", description="Minecraftサーバーを起動するよ")
-async def start_server_command(interaction: discord.Interaction):
-    # まず即時 defer して interaction が切れないようにする
-    try:
-        await interaction.response.defer(ephemeral=True)
-    except discord.NotFound:
-        print("Interaction はすでに失効しています")
-
-    async def background_task():
-        try:
-            # 起動中メッセージ
-            await interaction.followup.send("起動中", ephemeral=True)
-        except discord.NotFound:
-            print("Interaction は失効済みで起動中メッセージ送れず")
-
-        # Minecraft + auto_shutdown 起動
-        await asyncio.to_thread(start_minecraft_and_monitor)
-
-        try:
-            # 完了メッセージ
-            await interaction.followup.send("サーバーを起動したよ！", ephemeral=True)
-        except discord.NotFound:
-            print("Interaction は失効済みで完了メッセージ送れず")
-
-    asyncio.create_task(background_task())
+    mc_running = "✅ 稼働中" if out and "minecraft" in out else "💤 停止中"
+    
+    # 読み上げBotの状態も取得
+    kana_out, _ = await asyncio.to_thread(run_ssh_command, "systemctl --user is-active kana.service")
+    kana_running = "✅ 稼働中" if kana_out and "active" in kana_out else "💤 停止中"
+    
+    await interaction.followup.send(
+        f"📊 **サーバー状況**\n・マイクラ: {mc_running}\n・読み上げ: {kana_running}", 
+        ephemeral=True
+    )
     
 # --- ランダム会話ターゲット管理 ---
 def load_chat_targets():
