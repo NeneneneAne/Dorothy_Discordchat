@@ -167,33 +167,35 @@ def is_allowed(interaction: discord.Interaction):
     return interaction.user.id in ALLOWED_USER_IDS
 
 def run_ssh_command(command):
-    """環境変数の秘密鍵(OpenSSH対応)を使ってコマンドを実行"""
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
         raw_key = os.getenv('SSH_PRIVATE_KEY', '')
         
-        # --- 改行復元処理 ---
+        # --- 強制改行・整形処理 ---
         header = "-----BEGIN OPENSSH PRIVATE KEY-----"
         footer = "-----END OPENSSH PRIVATE KEY-----"
         
-        if header in raw_key and footer in raw_key:
-            inner = raw_key.replace(header, "").replace(footer, "").strip()
-            fixed_inner = inner.replace(" ", "\n")
-            formatted_key = f"{header}\n{fixed_inner}\n{footer}"
-        else:
-            formatted_key = raw_key
+        # 中身だけを抽出（ヘッダーとフッターを剥がして空白を除去）
+        content = raw_key.replace(header, "").replace(footer, "").strip()
+        # 全ての空白（Koyebで化けたスペース）を一旦消して繋げる
+        content = content.replace(" ", "").replace("\n", "")
         
-        # 修正：io.StringIO を使いつつ、クラスを明示せず PKey に判別させる
-        key_file = io.StringIO(formatted_key)
+        # 70文字ごとに改行を入れる（OpenSSHの標準形式に復元）
+        formatted_body = "\n".join([content[i:i+70] for i in range(0, len(content), 70)])
         
-        # --- 最重要修正：引数名を指定せず(file_obj=等を書かず)に渡す ---
-        # 鍵の種類が何であれ、これで自動判別されます
-        private_key = paramiko.PKey.from_private_key(key_file)
+        # 正しい形式に組み立て
+        final_key = f"{header}\n{formatted_body}\n{footer}\n"
+        
+        key_file = io.StringIO(final_key)
+        # --------------------------
+
+        # RSAとして読み込み
+        private_key = paramiko.RSAKey.from_private_key(key_file)
         
         ssh.connect(
-            os.getenv('SSH_HOST'), 
+            hostname=os.getenv('SSH_HOST'), 
             port=int(os.getenv('SSH_PORT', 22)), 
             username=os.getenv('SSH_USER'), 
             pkey=private_key,
