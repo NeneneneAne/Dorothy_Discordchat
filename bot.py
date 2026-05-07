@@ -172,24 +172,39 @@ def run_ssh_command(command):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
-        # 文字列として保存された秘密鍵を読み込む
-        key_file = io.StringIO(os.getenv('SSH_PRIVATE_KEY'))
-        # PKey は鍵の形式(RSA/OpenSSH/Ed25519)を自動判別します
-        private_key = paramiko.PKey.from_private_key(key_file)
+        # 1. 環境変数から文字列をそのまま取得
+        key_content = os.getenv('SSH_PRIVATE_KEY')
+        if not key_content:
+            return None, "SSH_PRIVATE_KEY が設定されていません"
+
+        # 2. StringIO を使わず、PKey.from_private_key_file() の代わりに 
+        #    文字列を直接読み込めるクラス（RSAかEd25519）を試行する
+        #    あなたの鍵は OPENSSH 形式なので、Ed25519 か RSA の新しい形式です
+        try:
+            # まずは汎用的な PKey で試みる
+            key_file = io.StringIO(key_content)
+            private_key = paramiko.PKey.from_private_key(key_file)
+        except:
+            # 失敗した場合は Ed25519Key として読み込んでみる
+            key_file = io.StringIO(key_content)
+            private_key = paramiko.Ed25519Key.from_private_key(key_file)
         
         ssh.connect(
             os.getenv('SSH_HOST'), 
             port=int(os.getenv('SSH_PORT', 22)), 
             username=os.getenv('SSH_USER'), 
-            pkey=private_key
+            pkey=private_key,
+            timeout=10 # 接続切れ防止
         )
+        
         stdin, stdout, stderr = ssh.exec_command(command)
         output = stdout.read().decode('utf-8')
         error = stderr.read().decode('utf-8')
         ssh.close()
         return output, error
     except Exception as e:
-        return None, str(e)
+        # ここでエラー内容を詳しく出す
+        return None, f"SSHエラー: {str(e)}"
 
 # --- 1. kana-start (マイクラ停止 -> 読み上げ起動) ---
 
