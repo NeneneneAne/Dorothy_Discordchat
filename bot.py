@@ -167,32 +167,30 @@ def is_allowed(interaction: discord.Interaction):
     return interaction.user.id in ALLOWED_USER_IDS
 
 def run_ssh_command(command):
+    """環境変数の秘密鍵(OpenSSH対応)を使ってコマンドを実行"""
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
         raw_key = os.getenv('SSH_PRIVATE_KEY', '')
         
-        # --- 改行がスペースに化けていても復元する処理 ---
+        # --- 改行復元処理 ---
         header = "-----BEGIN OPENSSH PRIVATE KEY-----"
         footer = "-----END OPENSSH PRIVATE KEY-----"
         
         if header in raw_key and footer in raw_key:
-            # 中身を取り出してスペースを改行に変換
             inner = raw_key.replace(header, "").replace(footer, "").strip()
             fixed_inner = inner.replace(" ", "\n")
             formatted_key = f"{header}\n{fixed_inner}\n{footer}"
         else:
             formatted_key = raw_key
         
+        # 修正：io.StringIO を使いつつ、クラスを明示せず PKey に判別させる
         key_file = io.StringIO(formatted_key)
-        # --------------------------------------------
-
-        # Paramiko 3.x 以降の file_obj エラーを避けるため
-        # インスタンス化してから from_private_key を呼ぶ
-        private_key = paramiko.Ed25519Key.from_private_key(key_file) \
-                      if "OPENSSH" in formatted_key else \
-                      paramiko.RSAKey.from_private_key(key_file)
+        
+        # --- 最重要修正：引数名を指定せず(file_obj=等を書かず)に渡す ---
+        # 鍵の種類が何であれ、これで自動判別されます
+        private_key = paramiko.PKey.from_private_key(key_file)
         
         ssh.connect(
             os.getenv('SSH_HOST'), 
