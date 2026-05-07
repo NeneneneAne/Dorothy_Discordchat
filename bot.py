@@ -24,6 +24,7 @@ import boto3
 import subprocess
 import stat
 import paramiko
+import io
 
 session = None 
 
@@ -50,29 +51,10 @@ SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN")
 SWITCHBOT_TV_ID = os.getenv("SWITCHBOT_TV_ID")
 SWITCHBOT_LIGHT_ID = os.getenv("SWITCHBOT_LIGHT_ID")
 API_URL = "https://api.switch-bot.com/v1.1/devices"
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-INSTANCE_ID = os.getenv("EC2_INSTANCE_ID")  # Koyebの環境変数に入れる
-REGION = "ap-northeast-1"
-SERVER_DIR = "/home/ec2-user/fabric-server"  # Fabricサーバーディレクトリ
-SCREEN_NAME = "mcserver"
-EC2_HOST = os.getenv("EC2_PUBLIC_IP")       # EC2のパブリックIP
-EC2_USER = "ec2-user"                       # Amazon Linux の場合
-key_b64 = os.getenv("EC2_KEY_B64")
-EC2_KEY_PATH = "/tmp/nenene.pem"
-
-with open(EC2_KEY_PATH, "wb") as f:
-    f.write(base64.b64decode(key_b64))
-
-# パーミッションを 400 に
-os.chmod(EC2_KEY_PATH, stat.S_IRUSR)
-
-client = boto3.client(
-    "ec2",
-    region_name=REGION,
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-)
+SSH_HOST = os.getenv('SSH_HOST')
+SSH_PORT = int(os.getenv('SSH_PORT', 22))
+SSH_USER = os.getenv('SSH_USER')
+SSH_PRIVATE_KEY = os.getenv('SSH_PRIVATE_KEY')
 
 app = Flask(__name__)
 
@@ -152,6 +134,12 @@ scheduler = AsyncIOScheduler(timezone=JST)
 
 logger.info(f"使用中のAPIキー: {GEMINI_API_KEY[:10]}****")
 
+# 操作を許可するユーザーIDのリスト
+ALLOWED_USER_IDS = [
+    int(DISCORD_NOTIFY_USER_ID),  # あなた
+    # 123456789012345678,        # 友達のIDを追加する場合はここへ
+]
+
 async def send_dm(user_id: str, message: str):
     try:
         user = await bot.fetch_user(int(user_id))
@@ -174,19 +162,78 @@ async def register_notification(user_id, date, time, message, repeat):
     save_notifications(notifications)
     schedule_notifications()
 
-def run_ssh_command(command: str):
-    key = paramiko.RSAKey.from_private_key_file(EC2_KEY_PATH)
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(EC2_HOST, username=EC2_USER, pkey=key)
-    
-    stdin, stdout, stderr = ssh.exec_command(command)
-    out = stdout.read().decode()
-    err = stderr.read().decode()
-    
-    ssh.close()
-    return out, err
+def is_allowed(interaction: discord.Interaction):
+    """ユーザーが許可リストにいるかチェック"""
+    return interaction.user.id in ALLOWED_USER_IDS
 
+def run_ssh_command(command):
+    """環境変数の秘密鍵を使ってSSH経由でコマンドを実行する"""
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # 文字列として保存された秘密鍵を読み込む
+        key_file = io.StringIO(SSH_PRIVATE_KEY)
+        private_key = paramiko.RSAKey.from_private_key(key_file)
+        
+        ssh.connect(SSH_HOST, port=SSH_PORT, username=SSH_USER, pkey=private_key)
+        stdin, stdout, stderr = ssh.exec_command(command)
+        
+        output = stdout.read().decode('utf-8')
+        error = stderr.read().decode('utf-8')
+        ssh.close()
+        return output, error
+    except Exception as e:
+        return None, str(e)
+
+@bot.tree.command(name="kana-start", description="読み上げBotを開始・再起動するよ！")
+async def kana_start(interaction: discord.Interaction):
+    if not is_allowed(interaction):
+        await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    _, err = await asyncio.to_thread(run_ssh_command, "systemctl --user restart kana.service")
+    await interaction.followup.send("🔊 読み上げBotを起動したよ！" if not err else f"⚠️ エラー: {err}")
+
+@bot.tree.command(name="kana-stop", description="読み上げBotを停止するよ！")
+async def kana_stop(interaction: discord.Interaction):
+    if not is_allowed(interaction):
+        await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    _, err = await asyncio.to_thread(run_ssh_command, "systemctl --user stop kana.service")
+    await interaction.followup.send("🔇 読み上げBotを停止したよ！" if not err else f"⚠️ エラー: {err}")
+
+# --- マイクラサーバー操作コマンド ---
+
+@bot.tree.command(name="mc-start", description="マイクラサーバーを起動するよ！")
+async def mc_start(interaction: discord.Interaction):
+    if not is_allowed(interaction):
+        await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    # 既に動いていないか確認してから起動 (パスは環境に合わせてください)
+    cmd = "screen -ls | grep -q minecraft || (cd /root/mc-forge-120 && screen -dmS minecraft ./run.sh)"
+    _, err = await asyncio.to_thread(run_ssh_command, cmd)
+    await interaction.followup.send("🎮 マイクラサーバーの起動を試みたよ！" if not err else f"⚠️ エラー: {err}")
+
+@bot.tree.command(name="mc-stop", description="マイクラサーバーを安全に停止するよ！")
+async def mc_stop(interaction: discord.Interaction):
+    if not is_allowed(interaction):
+        await interaction.response.send_message("❌ 権限がないよ！", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    # 安全に停止信号を送る
+    cmd = "screen -S minecraft -X stuff 'stop\\n'"
+    _, err = await asyncio.to_thread(run_ssh_command, cmd)
+    await interaction.followup.send("🛑 マイクラサーバーに停止コマンドを送ったよ！")
+
+@bot.tree.command(name="mc-status", description="サーバーの稼働状況を確認するよ！")
+async def mc_status(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    out, _ = await asyncio.to_thread(run_ssh_command, "screen -ls")
+    mc_running = "✅ 稼働中" if "minecraft" in out else "💤 停止中"
+    await interaction.followup.send(f"📊 **サーバー状況**\n・マイクラ: {mc_running}")
 
 @bot.tree.command(name="start_server", description="Minecraftサーバーを起動するよ")
 async def start_server_command(interaction: discord.Interaction):
@@ -211,23 +258,6 @@ async def start_server_command(interaction: discord.Interaction):
             await interaction.followup.send("サーバーを起動したよ！", ephemeral=True)
         except discord.NotFound:
             print("Interaction は失効済みで完了メッセージ送れず")
-
-    asyncio.create_task(background_task())
-
-
-@bot.tree.command(name="stop_server", description="Minecraftサーバーを停止するよ")
-async def stop_server_command(interaction: discord.Interaction):
-    try:
-        await interaction.response.defer(ephemeral=True)
-    except discord.NotFound:
-        print("Interaction はすでに失効しています")
-
-    async def background_task():
-        await asyncio.to_thread(stop_minecraft_and_ec2)
-        try:
-            await interaction.followup.send("サーバーとインスタンスをとめたよ！", ephemeral=True)
-        except discord.NotFound:
-            print("Interaction は失効済みで停止完了メッセージ送れず")
 
     asyncio.create_task(background_task())
     
