@@ -173,52 +173,6 @@ async def register_notification(user_id, date, time, message, repeat):
 
     save_notifications(notifications)
     schedule_notifications()
-    
-def start_minecraft_and_monitor():
-    """EC2 起動 → Minecraft サーバーを screen で起動 → auto_shutdown を screen で起動"""
-    print("EC2 起動中…")
-    client.start_instances(InstanceIds=[INSTANCE_ID])
-    waiter = client.get_waiter('instance_running')
-    waiter.wait(InstanceIds=[INSTANCE_ID])
-    print("EC2 起動完了")
-
-    # Minecraft サーバーを screen で起動
-    print("Minecraft サーバーを screen で起動中…")
-    cmd = (
-        f"screen -dmS {SCREEN_NAME} bash -c '"
-        f"cd {SERVER_DIR} && chmod +x start_server.sh && ./start_server.sh; exec bash'"
-    )
-    out, err = run_ssh_command(cmd)
-    print("Minecraft start_server.sh stdout:", out)
-    print("Minecraft start_server.sh stderr:", err)
-
-    # auto_shutdown を screen で起動
-    print("auto_shutdown を screen で起動中…")
-    cmd = (
-        f"screen -dmS shutdown bash -c '"
-        f"cd {SERVER_DIR} && chmod +x auto_shutdown.sh && ./auto_shutdown.sh; exec bash'"
-    )
-    out, err = run_ssh_command(cmd)
-    print("auto_shutdown stdout:", out)
-    print("auto_shutdown stderr:", err)
-
-    print("Minecraft サーバーと監視スクリプトを起動しました！")
-
-
-def stop_minecraft_and_ec2():
-    """Minecraftサーバー停止 + EC2 停止"""
-    print("Minecraft サーバーを停止中…")
-    # screen 内で Minecraft の stop コマンド送信
-    cmd = f"screen -S {SCREEN_NAME} -X stuff $'stop\\n'"
-    out, err = run_ssh_command(cmd)
-    print("stop_server stdout:", out)
-    print("stop_server stderr:", err)
-
-    # EC2 停止
-    print("EC2 インスタンスを停止中…")
-    client.stop_instances(InstanceIds=[INSTANCE_ID])
-    print("EC2 停止完了")
-
 
 def run_ssh_command(command: str):
     key = paramiko.RSAKey.from_private_key_file(EC2_KEY_PATH)
