@@ -174,7 +174,13 @@ def run_ssh_command(command):
         
         # 文字列として保存された秘密鍵を読み込む
         key_file = io.StringIO(SSH_PRIVATE_KEY)
-        private_key = paramiko.RSAKey.from_private_key(key_file)
+        
+        try:
+            private_key = paramiko.RSAKey.from_private_key(key_file)
+        except paramiko.ssh_exception.SSHException:
+            key_file.seek(0) # 読み取り位置をリセット
+            private_key = paramiko.Ed25519Key.from_private_key(key_file)
+        # -------------------------------------------------------------------------
         
         ssh.connect(SSH_HOST, port=SSH_PORT, username=SSH_USER, pkey=private_key)
         stdin, stdout, stderr = ssh.exec_command(command)
