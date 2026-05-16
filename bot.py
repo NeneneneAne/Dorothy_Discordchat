@@ -463,7 +463,7 @@ async def on_ready():
         schedule_daily_todos()
         schedule_sleep_check() 
         schedule_random_chats()
-        schedule_resin_check()
+        # schedule_resin_check()
 
         logger.error("スケジュールを設定しました。")
         logger.error("🗓️ sleep_check_times:", sleep_check_times)
@@ -572,7 +572,7 @@ async def on_resumed():
     schedule_daily_todos()
     schedule_sleep_check()
     schedule_random_chats()
-    schedule_resin_check()
+    # schedule_resin_check()
 
 @bot.tree.command(name="set_notification", description="通知を設定するよ～！")
 async def set_notification(
@@ -1550,13 +1550,13 @@ async def check_and_notify_resin(user: discord.User | None = None):
 def schedule_resin_check():
     """15分ごとに自動で樹脂チェック"""
     global scheduler, logger
-    scheduler.add_job(
-        check_and_notify_resin,
-        "interval",
-        minutes=15,
-        id="check_resin",
-        replace_existing=True
-    )
+    #scheduler.add_job(
+     #   check_and_notify_resin,
+      #  "interval",
+       # minutes=15,
+        #id="check_resin",
+        #replace_existing=True
+    #)
     logger.info("⏰ 原神の樹脂チェックを15分ごとにスケジュールしました")
 
 def get_resin_status():
