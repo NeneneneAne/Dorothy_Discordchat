@@ -768,37 +768,99 @@ async def send_notification_message(user_id, info):
 
         base_message = info["message"]
 
-        prompt = (
-            f"{CHARACTER_PERSONALITY}\n\n"
-            f"あなたはDiscordでハニーに通知を送る可愛いAI「ドロシー」です。\n"
-            f"次の文章はハニーが登録した予定や行動（例：お風呂に入る、勉強する、寝るなど）です。\n"
-            f"その内容をもとに、ハニーに自然に声をかけるような一言メッセージを作ってください。\n\n"
-            f"条件:\n"
-            f"・語尾をやわらかく（〜だよ、〜ね、〜よ〜）などにする\n"
-            f"・少しテンション高めで、優しい雰囲気\n"
-            f"・できるだけ自然に通知として成立するようにする\n"
-            f"・短く、1〜2文以内で\n"
-            f"・文章の意味を変えず、自然に言い換える\n\n"
-            f"メッセージ: {base_message}"
+        notification_system = CHARACTER_PERSONALITY + """
+
+あなたはDiscordでハニーに通知を送るドロシーです。
+ドロシーが実際に話す通知文だけを出力してください。
+説明、自己紹介、選択肢、見出しは出力しないでください。
+登録内容にない行動を勝手に追加しないでください。
+
+通知するたびに言い方を変えてください。
+応援する、やさしく急かす、心配する、楽しそうに誘うなど、
+毎回ちがう自然な反応を選んでください。
+
+短い1〜2文にしてください。
+"""
+
+        style_hints = (
+            "元気に応援する感じ",
+            "やさしく急かす感じ",
+            "忘れていないか心配する感じ",
+            "楽しそうに誘う感じ",
+            "少し甘えるように声をかける感じ",
         )
 
-        natural_text = await get_gemini_response_no_history(prompt)
+        natural_text = ""
+
+        # 変な説明文が出た場合、言い方を変えて最大3回生成する
+        for attempt in range(3):
+            style_hint = random.choice(style_hints)
+
+            prompt = (
+                "次の登録内容について、ハニーへ送る通知文を作ってください。\n"
+                f"今回の雰囲気：{style_hint}\n"
+                "登録内容の意味は変えず、声のかけ方だけ自由に工夫してください。\n"
+                "登録内容が短くても、別の予定だと推測しないでください。\n"
+                f"<登録内容>{base_message}</登録内容>"
+            )
+
+            candidate = await get_gemini_response_no_history(
+                prompt,
+                notification_system
+            )
+
+            invalid_markers = (
+                "SYSTEM:",
+                "USER:",
+                "ASSISTANT:",
+                "条件:",
+                "登録内容",
+                "メッセージ:",
+                "予定：",
+                "The user",
+                "I need to",
+            )
+
+            candidate_is_invalid = (
+                not candidate
+                or len(candidate) > 120
+                or candidate.count("\n") > 1
+                or any(
+                    marker.lower() in candidate.lower()
+                    for marker in invalid_markers
+                )
+                or (
+                    len(base_message.strip()) <= 1
+                    and base_message not in candidate
+                )
+            )
+
+            if not candidate_is_invalid:
+                natural_text = candidate.strip()
+                break
+
+        # 3回とも失敗した場合だけ最低限の通知にする
+        if not natural_text:
+            natural_text = f"ハニー、そろそろ「{base_message}」だよ〜！"
 
         final_message = f"{natural_text}\n\n予定：{base_message}"
-
         await user.send(final_message)
 
         uid = str(user_id)
-        if uid in notifications:
 
+        if uid in notifications:
             for notif in notifications[uid]:
                 if notif.get("id") == info.get("id"):
 
                     if notif.get("repeat", False):
                         now = datetime.datetime.now(JST)
-                        next_year_date = datetime.datetime.strptime(
-                            f"{now.year}-{notif['date']}", "%Y-%m-%d"
-                        ) + datetime.timedelta(days=365)
+                        next_year_date = (
+                            datetime.datetime.strptime(
+                                f"{now.year}-{notif['date']}",
+                                "%Y-%m-%d"
+                            )
+                            + datetime.timedelta(days=365)
+                        )
                         notif["date"] = next_year_date.strftime("%m-%d")
 
                     else:
@@ -810,6 +872,7 @@ async def send_notification_message(user_id, info):
 
     except discord.NotFound:
         logger.error(f"Error: User with ID {user_id} not found.")
+
     except Exception as e:
         logger.error(f"通知送信中にエラー: {e}")
 
