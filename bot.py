@@ -1002,6 +1002,35 @@ async def set_sleep_check_time(interaction: discord.Interaction, hour: int, minu
 
     await interaction.followup.send(f"✅ 毎日 {hour:02d}:{minute:02d} に寝たほうがいいよ～メッセージを送るようにしたよ！", ephemeral=True)
 
+@bot.tree.command(name="roll", description="指定したダイスを振るよ！（D100, D10, D6, D4, D3 のみ対応）")
+@app_commands.choices(
+    dice=[
+        app_commands.Choice(name="1D100", value=100),
+        app_commands.Choice(name="1D10", value=10),
+        app_commands.Choice(name="1D6", value=6),
+        app_commands.Choice(name="1D4", value=4),
+        app_commands.Choice(name="1D3", value=3),
+    ]
+)
+async def roll_dice(interaction: discord.Interaction, dice: int, count: int = 1):
+    await interaction.response.defer()
+
+    # 個数の制限（過大な呼び出しを防止）
+    if count < 1 or count > 50:
+        await interaction.followup.send("⛔ ダイスの数は 1 ～ 50 個の間で指定してね！", ephemeral=True)
+        return
+
+    rolls = [random.randint(1, dice) for _ in range(count)]
+    total = sum(rolls)
+
+    if count > 1:
+        detail_str = f"[{' + '.join(map(str, rolls))}]"
+        message = f"🎲 **{count}D{dice}** ＞ {detail_str} ＞ **{total}**"
+    else:
+        message = f"🎲 **1D{dice}** ＞ **{total}**"
+
+    await interaction.followup.send(message)
+
 CHARACTER_PERSONALITY = """
 設定:
 ・あなたの名前は「ドロシー」です
